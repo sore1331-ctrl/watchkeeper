@@ -2,11 +2,95 @@
 
 // ─── Entry forms: quick measurement, watch profile, service record ──────────
 
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { Plus } from "lucide-react";
 import { useStore } from "@/lib/store";
 import type { Measurement, MovementType, ServiceRecord, ServiceType, Watch, WatchPosition } from "@/lib/types";
 import { Button, Dialog, DialogContent, DialogTrigger, Input, Label, Select, Switch, Textarea } from "./ui";
+import { filterSuggestions, modelsForBrand, WATCH_BRANDS, type CatalogModel } from "@/lib/watch-catalog";
+
+// ── Autocomplete input ──────────────────────────────────────────────────────
+interface Suggestion {
+  label: string;
+  sub?: string;
+}
+
+function AutocompleteInput({
+  value, onChange, onPick, suggestions, placeholder,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  /** called with the picked label after onChange */
+  onPick?: (label: string) => void;
+  suggestions: Suggestion[];
+  placeholder?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [highlight, setHighlight] = useState(-1);
+  const listRef = useRef<HTMLUListElement>(null);
+  const show = open && suggestions.length > 0;
+
+  const pick = (label: string) => {
+    onChange(label);
+    onPick?.(label);
+    setOpen(false);
+    setHighlight(-1);
+  };
+
+  return (
+    <div className="relative">
+      <Input
+        value={value}
+        placeholder={placeholder}
+        onChange={(e) => { onChange(e.target.value); setOpen(true); setHighlight(-1); }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 120)}
+        onKeyDown={(e) => {
+          if (!show) return;
+          if (e.key === "ArrowDown") {
+            e.preventDefault();
+            setHighlight((h) => Math.min(h + 1, suggestions.length - 1));
+          } else if (e.key === "ArrowUp") {
+            e.preventDefault();
+            setHighlight((h) => Math.max(h - 1, 0));
+          } else if (e.key === "Enter" && highlight >= 0) {
+            e.preventDefault();
+            pick(suggestions[highlight].label);
+          } else if (e.key === "Escape") {
+            setOpen(false);
+          }
+        }}
+        role="combobox"
+        aria-expanded={show}
+        aria-autocomplete="list"
+      />
+      {show && (
+        <ul
+          ref={listRef}
+          className="glass absolute z-50 mt-1 max-h-56 w-full overflow-y-auto rounded-xl p-1 shadow-2xl"
+          role="listbox"
+        >
+          {suggestions.map((s, i) => (
+            <li key={s.label + i} role="option" aria-selected={i === highlight}>
+              <button
+                type="button"
+                // mousedown fires before the input's blur closes the list
+                onMouseDown={(e) => { e.preventDefault(); pick(s.label); }}
+                onMouseEnter={() => setHighlight(i)}
+                className={`flex w-full cursor-pointer items-baseline justify-between gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm ${
+                  i === highlight ? "bg-accent/15 text-accent" : "hover:bg-surface-2"
+                }`}
+              >
+                <span className="truncate">{s.label}</span>
+                {s.sub && <span className="shrink-0 text-[11px] text-muted">{s.sub}</span>}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
 
 const POSITIONS: { value: WatchPosition; label: string }[] = [
   { value: "on-wrist", label: "On wrist" },
@@ -223,6 +307,43 @@ export function WatchDialog({
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) =>
     setForm((f) => ({ ...f, [k]: v }));
 
+  // brand suggestions: built-in catalog + brands already in the collection
+  const brandOptions = useMemo(() => {
+    const own = watches.map((w) => w.brand);
+    return [...new Set([...WATCH_BRANDS, ...own])].sort((a, b) => a.localeCompare(b));
+  }, [watches]);
+  const brandSuggestions = useMemo(
+    () => filterSuggestions(form.brand, brandOptions).map((label) => ({ label })),
+    [form.brand, brandOptions]
+  );
+
+  const brandModels = useMemo(() => modelsForBrand(form.brand), [form.brand]);
+  const modelSuggestions = useMemo(
+    () =>
+      filterSuggestions(form.model, brandModels.map((m) => m.model)).map((label) => {
+        const m = brandModels.find((x) => x.model === label);
+        return { label, sub: m?.reference ?? m?.caliber };
+      }),
+    [form.model, brandModels]
+  );
+
+  /** Prefill specs from the catalog, only into fields the user hasn't filled. */
+  const applyModel = (label: string) => {
+    const m: CatalogModel | undefined = brandModels.find((x) => x.model === label);
+    if (!m) return;
+    setForm((f) => ({
+      ...f,
+      model: label,
+      reference: f.reference || (m.reference ?? ""),
+      movementType: m.movementType,
+      caliber: f.caliber || (m.caliber ?? ""),
+      beatRate: f.beatRate || (m.beatRate?.toString() ?? ""),
+      powerReserveHours: f.powerReserveHours || (m.powerReserveHours?.toString() ?? ""),
+      jewels: f.jewels || (m.jewels?.toString() ?? ""),
+      coscCertified: f.coscCertified || (m.cosc ?? false),
+    }));
+  };
+
   const submit = () => {
     if (!form.brand || !form.model) return;
     const payload = {
@@ -257,9 +378,31 @@ export function WatchDialog({
       <DialogContent title={existing ? "Edit watch" : "Add watch"}>
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
-            <div><Label>Brand *</Label><Input value={form.brand} onChange={(e) => set("brand", e.target.value)} placeholder="Omega" /></div>
-            <div><Label>Model *</Label><Input value={form.model} onChange={(e) => set("model", e.target.value)} placeholder="Speedmaster" /></div>
+            <div>
+              <Label>Brand *</Label>
+              <AutocompleteInput
+                value={form.brand}
+                onChange={(v) => set("brand", v)}
+                suggestions={brandSuggestions}
+                placeholder="Omega"
+              />
+            </div>
+            <div>
+              <Label>Model *</Label>
+              <AutocompleteInput
+                value={form.model}
+                onChange={(v) => set("model", v)}
+                onPick={applyModel}
+                suggestions={modelSuggestions}
+                placeholder="Speedmaster"
+              />
+            </div>
           </div>
+          {brandModels.length > 0 && !form.model && (
+            <p className="-mt-2 text-[11px] text-faint">
+              {brandModels.length} known {form.brand.trim()} models — picking one prefills its specs.
+            </p>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <div><Label>Reference</Label><Input value={form.reference} onChange={(e) => set("reference", e.target.value)} /></div>
             <div><Label>Serial</Label><Input value={form.serial} onChange={(e) => set("serial", e.target.value)} /></div>
