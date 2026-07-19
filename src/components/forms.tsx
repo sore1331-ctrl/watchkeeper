@@ -102,11 +102,69 @@ const POSITIONS: { value: WatchPosition; label: string }[] = [
   { value: "crown-right", label: "Crown right" },
 ];
 
-/** hh:mm:ss → seconds since midnight; supports hh:mm too */
+/**
+ * Flexible time parser → [h, m, s] or null.
+ * Accepts "10:01:31", "10:01", "10.01.31", "10 01 31", and bare digit runs:
+ * "959" → 9:59:00, "0959" → 09:59:00, "100131" → 10:01:31.
+ */
+function parseTimeParts(input: string): [number, number, number] | null {
+  const s = input.trim();
+  if (!s) return null;
+  let parts: number[];
+  if (/^\d+$/.test(s)) {
+    // bare digits — split from the left into H(H), MM, SS
+    if (s.length > 6) return null;
+    const p = s.length % 2 === 1 ? [s.slice(0, 1), s.slice(1, 3), s.slice(3, 5)] : [s.slice(0, 2), s.slice(2, 4), s.slice(4, 6)];
+    parts = p.filter((x) => x !== "").map(Number);
+  } else {
+    const chunks = s.split(/[:.,\s]+/).filter(Boolean);
+    if (chunks.length < 1 || chunks.length > 3 || chunks.some((c) => !/^\d{1,2}$/.test(c))) return null;
+    parts = chunks.map(Number);
+  }
+  const [h, m = 0, sec = 0] = parts;
+  if (h > 23 || m > 59 || sec > 59) return null;
+  return [h, m, sec];
+}
+
+/** flexible time string → seconds since midnight */
 function parseHms(s: string): number | null {
-  const m = s.trim().match(/^(\d{1,2}):(\d{2})(?::(\d{2}(?:\.\d+)?))?$/);
-  if (!m) return null;
-  return +m[1] * 3600 + +m[2] * 60 + (m[3] ? +m[3] : 0);
+  const p = parseTimeParts(s);
+  return p ? p[0] * 3600 + p[1] * 60 + p[2] : null;
+}
+
+/** canonical HH:MM:SS, or the input unchanged if unparseable */
+function normalizeTime(s: string): string {
+  const p = parseTimeParts(s);
+  if (!p) return s;
+  const pad2 = (n: number) => String(n).padStart(2, "0");
+  return `${pad2(p[0])}:${pad2(p[1])}:${pad2(p[2])}`;
+}
+
+/**
+ * Time-of-day input. Accepts any reasonable format while typing ("959",
+ * "100131", "9:59", "9.59.6") — the flexible parser reads it live — and
+ * normalizes the display to canonical HH:MM:SS on blur or Enter.
+ */
+function TimeInput({
+  value, onChange, placeholder,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+}) {
+  const valid = parseTimeParts(value) !== null;
+  return (
+    <Input
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      onBlur={() => onChange(normalizeTime(value))}
+      onKeyDown={(e) => { if (e.key === "Enter") onChange(normalizeTime(value)); }}
+      placeholder={placeholder}
+      inputMode="numeric"
+      className={`font-mono ${value && !valid ? "border-critical/60" : ""}`}
+      aria-invalid={!!value && !valid}
+    />
+  );
 }
 
 const nowHms = () => {
@@ -164,8 +222,8 @@ export function MeasurementDialog({
     const m: Omit<Measurement, "id"> = {
       watchId: form.watchId,
       measuredAt: new Date().toISOString(),
-      referenceTime: form.referenceTime,
-      watchTime: form.watchTime,
+      referenceTime: normalizeTime(form.referenceTime),
+      watchTime: normalizeTime(form.watchTime),
       offsetSeconds: offset,
       temperatureC: form.temperatureC ? +form.temperatureC : undefined,
       position: form.position,
@@ -202,18 +260,18 @@ export function MeasurementDialog({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label>Reference time (atomic)</Label>
-              <Input
+              <TimeInput
                 value={form.referenceTime}
-                onChange={(e) => set("referenceTime", e.target.value)}
-                placeholder="14:30:00" className="font-mono"
+                onChange={(v) => set("referenceTime", v)}
+                placeholder="14:30:00"
               />
             </div>
             <div>
               <Label>Watch time</Label>
-              <Input
+              <TimeInput
                 value={form.watchTime}
-                onChange={(e) => set("watchTime", e.target.value)}
-                placeholder="14:30:04" className="font-mono"
+                onChange={(v) => set("watchTime", v)}
+                placeholder="14:30:04"
               />
             </div>
           </div>
