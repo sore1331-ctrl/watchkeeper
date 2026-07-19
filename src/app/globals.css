@@ -1,0 +1,118 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --background: #f4f5f7;
+  --surface: #ffffff;
+  --surface-2: #eef0f3;
+  --glass: rgba(255, 255, 255, 0.72);
+  --border: rgba(15, 23, 42, 0.1);
+  --foreground: #0f172a;
+  --muted: #64748b;
+  --faint: #94a3b8;
+  --accent: #0d9488;
+  --positive: #059669;
+  --warning: #d97706;
+  --critical: #dc2626;
+  --info: #3b82f6;
+  --chart-grid: rgba(15, 23, 42, 0.07);
+}
+
+.dark {
+  --background: #0a0e14;
+  --surface: #10151d;
+  --surface-2: #161d27;
+  --glass: rgba(22, 29, 39, 0.6);
+  --border: rgba(148, 163, 184, 0.13);
+  --foreground: #e6eaf0;
+  --muted: #8b98ab;
+  --faint: #5b6879;
+  --accent: #2dd4bf;
+  --positive: #34d399;
+  --warning: #fbbf24;
+  --critical: #f87171;
+  --info: #60a5fa;
+  --chart-grid: rgba(148, 163, 184, 0.1);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-border-token: var(--border);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-accent: var(--accent);
+  --color-positive: var(--positive);
+  --color-warning: var(--warning);
+  --color-critical: var(--critical);
+  --color-info: var(--info);
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* soft radial glow behind the app, dark mode only */
+.dark body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(600px 400px at 15% -10%, rgba(45, 212, 191, 0.07), transparent 60%),
+    radial-gradient(800px 500px at 90% 0%, rgba(96, 165, 250, 0.05), transparent 60%);
+  z-index: 0;
+}
+
+.glass {
+  background: var(--glass);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--border);
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+}
+
+::selection {
+  background: color-mix(in oklab, var(--accent) 30%, transparent);
+}
+
+/* scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--faint) transparent;
+}
+
+/* recharts polish */
+.recharts-cartesian-axis-tick text {
+  fill: var(--muted);
+  font-size: 11px;
+}
+.recharts-tooltip-cursor {
+  stroke: var(--faint);
+}
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.fade-up {
+  animation: fade-up 0.35s ease both;
+}
