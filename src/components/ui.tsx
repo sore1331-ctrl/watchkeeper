@@ -7,6 +7,7 @@ import * as React from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import * as TabsPrimitive from "@radix-ui/react-tabs";
 import * as SwitchPrimitive from "@radix-ui/react-switch";
+import * as PopoverPrimitive from "@radix-ui/react-popover";
 import { cva, type VariantProps } from "class-variance-authority";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -268,6 +269,52 @@ export function DialogContent({
         {children}
       </DialogPrimitive.Content>
     </DialogPrimitive.Portal>
+  );
+}
+
+// ── InfoTip ─────────────────────────────────────────────────────────────────
+/**
+ * Explanation bubble. Opens on hover for mouse users and on tap/click for
+ * touch and keyboard, so the content is reachable on every device.
+ */
+export function InfoTip({
+  content, children, className,
+}: {
+  content: React.ReactNode;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  const [open, setOpen] = React.useState(false);
+  return (
+    <PopoverPrimitive.Root open={open} onOpenChange={setOpen}>
+      <PopoverPrimitive.Trigger asChild>
+        <button
+          type="button"
+          aria-label="What does this mean?"
+          className={cn(
+            "cursor-help rounded-full outline-offset-2 focus-visible:outline-2 focus-visible:outline-accent",
+            className
+          )}
+          onPointerEnter={(e) => { if (e.pointerType === "mouse") setOpen(true); }}
+          onPointerLeave={(e) => { if (e.pointerType === "mouse") setOpen(false); }}
+        >
+          {children}
+        </button>
+      </PopoverPrimitive.Trigger>
+      <PopoverPrimitive.Portal>
+        <PopoverPrimitive.Content
+          side="top"
+          align="center"
+          sideOffset={6}
+          collisionPadding={12}
+          onOpenAutoFocus={(e) => e.preventDefault()}
+          className="glass z-50 max-w-72 rounded-xl px-3 py-2 text-xs leading-relaxed shadow-2xl data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95"
+        >
+          {content}
+          <PopoverPrimitive.Arrow className="fill-[var(--surface)]" />
+        </PopoverPrimitive.Content>
+      </PopoverPrimitive.Portal>
+    </PopoverPrimitive.Root>
   );
 }
 

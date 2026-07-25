@@ -2,7 +2,7 @@
 
 import type { Insight, Measurement, Notification, Watch, ServiceRecord } from "./types";
 import { computeStats, detectAnomaly, mean, stdDev, type WatchStats } from "./stats";
-import { accuracyGrade, batteryRemaining, daysSince, healthScore, lastRegulationDate, nextServiceEstimate } from "./grades";
+import { accuracyGrade, batteryRemaining, daysSince, healthScore, lastRegulationDate, MIN_MEASUREMENTS_FOR_GRADE, nextServiceEstimate } from "./grades";
 
 const DAY_MS = 86_400_000;
 let seq = 0;
@@ -26,10 +26,13 @@ export function generateInsights(
   const stats = computeStats(measurements);
   const out: Insight[] = [];
   const name = `${watch.brand} ${watch.model}`;
-  if (stats.samples.length < 3) {
+  // Same evidence bar as grading: below it, one stray reading dominates.
+  if (measurements.length < MIN_MEASUREMENTS_FOR_GRADE) {
+    const left = MIN_MEASUREMENTS_FOR_GRADE - measurements.length;
     out.push({
       id: nid(), watchId: watch.id, kind: "recommendation", severity: "neutral",
-      text: `Add a few more measurements for ${name} to unlock trend analysis.`,
+      text: `${left} more measurement${left === 1 ? "" : "s"} needed before ${name} gets a rate analysis.`,
+      detail: `Accuracy grades, health scoring and trend insights unlock at ${MIN_MEASUREMENTS_FOR_GRADE} measurements.`,
     });
     return out;
   }

@@ -27,7 +27,7 @@ export default function ComparePage() {
           return {
             watch: w, stats,
             health: healthScore(w, stats, servicesFor(w.id)),
-            grade: accuracyGrade(stats.avgSpd, w.movementType, w.coscCertified),
+            grade: accuracyGrade(stats.avgSpd, w.movementType, w.coscCertified, stats.count),
             services: servicesFor(w.id),
           };
         }),
@@ -93,8 +93,8 @@ export default function ComparePage() {
     { label: "Weekly variance", get: (r) => r.stats.weeklyVariance?.toFixed(2) ?? "—" },
     { label: "Monthly variance", get: (r) => r.stats.monthlyVariance?.toFixed(2) ?? "—" },
     { label: "Consistency", get: (r) => (r.stats.consistencyIndex != null ? `${r.stats.consistencyIndex}%` : "—") },
-    { label: "Grade", get: (r) => <GradeBadge grade={r.grade} /> },
-    { label: "Health", get: (r) => (r.health ? <HealthBadge label={r.health.label} /> : "—") },
+    { label: "Grade", get: (r) => <GradeBadge grade={r.grade} movement={r.watch.movementType} count={r.stats.count} /> },
+    { label: "Health", get: (r) => <HealthBadge label={r.health?.label ?? null} count={r.stats.count} /> },
     { label: "Movement", get: (r) => <span className="capitalize">{r.watch.movementType}</span> },
     { label: "Caliber", get: (r) => r.watch.caliber ?? "—" },
     { label: "Power reserve", get: (r) => (r.watch.powerReserveHours ? `${r.watch.powerReserveHours} h` : "—") },

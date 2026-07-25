@@ -13,8 +13,8 @@ import {
   computeStats, detectAnomaly, fmtSec, fmtSpd, groupByPeriod, rollingAverage,
 } from "@/lib/stats";
 import {
-  accuracyGrade, batteryRemaining, daysSince, healthScore,
-  lastRegulationDate, lastServiceDate, nextServiceEstimate,
+  accuracyGrade, batteryRemaining, daysSince, healthExplanation, healthScore,
+  lastRegulationDate, lastServiceDate, MIN_MEASUREMENTS_FOR_GRADE, nextServiceEstimate,
 } from "@/lib/grades";
 import { fmtDate, fmtDateTime, fmtMoney } from "@/lib/utils";
 import { MeasurementDialog, ServiceDialog, WatchDialog } from "@/components/forms";
@@ -76,7 +76,7 @@ export default function WatchDetailPage() {
     return {
       ms, stats, services,
       health: healthScore(watch, stats, services),
-      grade: accuracyGrade(stats.avgSpd, watch.movementType, watch.coscCertified),
+      grade: accuracyGrade(stats.avgSpd, watch.movementType, watch.coscCertified, stats.count),
       anomaly: detectAnomaly(stats.samples),
       chartData, weekly, monthly, forecast, history, wearByDay, tempData,
     };
@@ -108,7 +108,7 @@ export default function WatchDetailPage() {
             <h1 className="text-2xl font-bold tracking-tight">
               {watch.brand} <span className="text-muted">{watch.model}</span>
             </h1>
-            <GradeBadge grade={grade} />
+            <GradeBadge grade={grade} movement={watch.movementType} count={stats.count} />
             {watch.coscCertified && (
               <Badge color="#c9a227"><ShieldCheck className="h-3 w-3" /> COSC certified</Badge>
             )}
@@ -216,7 +216,7 @@ export default function WatchDetailPage() {
           </div>
 
           {/* health breakdown */}
-          {health && (
+          {health ? (
             <Card className="p-5">
               <div className="flex flex-col gap-6 md:flex-row md:items-center">
                 <div className="flex flex-col items-center gap-2">
@@ -227,8 +227,20 @@ export default function WatchDetailPage() {
                   {health.components.map((c) => (
                     <ScoreBar key={c.name} name={c.name} score={c.score} weight={c.weight} />
                   ))}
+                  <p className="pt-1 text-xs text-muted">{healthExplanation(health.label)}</p>
                 </div>
               </div>
+            </Card>
+          ) : (
+            <Card className="flex flex-col items-center gap-2 p-6 text-center">
+              <p className="text-sm font-semibold">Movement health</p>
+              <HealthBadge label={null} count={stats.count} />
+              <p className="max-w-lg text-xs text-muted">
+                Accuracy grading and health scoring need at least {MIN_MEASUREMENTS_FOR_GRADE}{" "}
+                measurements. Below that a single early or late reading can shift the average rate by
+                tens of seconds per day, so a verdict here would be noise rather than signal.
+                {stats.count > 0 && ` ${Math.max(0, MIN_MEASUREMENTS_FOR_GRADE - stats.count)} more to go.`}
+              </p>
             </Card>
           )}
 

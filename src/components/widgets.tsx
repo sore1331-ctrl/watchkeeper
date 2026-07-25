@@ -4,11 +4,14 @@
 
 import React from "react";
 import { motion } from "framer-motion";
-import { TrendingDown, TrendingUp, Minus } from "lucide-react";
+import { Hourglass, TrendingDown, TrendingUp, Minus } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Badge, Card } from "./ui";
-import { GRADE_COLORS, HEALTH_COLORS } from "@/lib/grades";
-import type { AccuracyGrade, HealthLabel } from "@/lib/types";
+import { Badge, Card, InfoTip } from "./ui";
+import {
+  GRADE_COLORS, HEALTH_COLORS, MIN_MEASUREMENTS_FOR_GRADE,
+  gradeExplanation, healthExplanation,
+} from "@/lib/grades";
+import type { AccuracyGrade, HealthLabel, MovementType } from "@/lib/types";
 
 export function StatCard({
   label, value, sub, trend, delay = 0, accent, className,
@@ -74,14 +77,96 @@ export function HealthRing({
   );
 }
 
-export function GradeBadge({ grade }: { grade: AccuracyGrade | null }) {
-  if (!grade) return <Badge color="var(--faint)">No data</Badge>;
-  return <Badge color={GRADE_COLORS[grade]}>{grade}</Badge>;
+/**
+ * Shown in place of a grade/health verdict until enough measurements exist.
+ * `count` is the number of measurements recorded so far.
+ */
+export function PendingBadge({ count, explain = true }: { count: number; explain?: boolean }) {
+  const badge = (
+    <Badge color="var(--faint)">
+      <Hourglass className="h-3 w-3" />
+      {count}/{MIN_MEASUREMENTS_FOR_GRADE} measurements
+    </Badge>
+  );
+  if (!explain) return badge;
+  return (
+    <InfoTip
+      content={
+        <>
+          <p className="font-semibold">Not enough data yet</p>
+          <p className="mt-1 text-muted">
+            A rate needs at least {MIN_MEASUREMENTS_FOR_GRADE} measurements to mean anything — with
+            fewer, a single early or late reading can swing the average by tens of seconds per day.
+            {count > 0 && ` ${MIN_MEASUREMENTS_FOR_GRADE - count} to go.`}
+          </p>
+        </>
+      }
+    >
+      {badge}
+    </InfoTip>
+  );
 }
 
-export function HealthBadge({ label }: { label: HealthLabel | null }) {
-  if (!label) return <Badge color="var(--faint)">No data</Badge>;
-  return <Badge color={HEALTH_COLORS[label]}>{label}</Badge>;
+export function GradeBadge({
+  grade, movement = "automatic", count, explain = true,
+}: {
+  grade: AccuracyGrade | null;
+  movement?: MovementType;
+  /** measurements recorded; enables the "collecting data" state */
+  count?: number;
+  explain?: boolean;
+}) {
+  if (!grade) {
+    if (count != null && count < MIN_MEASUREMENTS_FOR_GRADE)
+      return <PendingBadge count={count} explain={explain} />;
+    return <Badge color="var(--faint)">No data</Badge>;
+  }
+  const badge = <Badge color={GRADE_COLORS[grade]}>{grade}</Badge>;
+  if (!explain) return badge;
+  return (
+    <InfoTip
+      content={
+        <>
+          <p className="font-semibold" style={{ color: GRADE_COLORS[grade] }}>
+            {grade === "COSC" ? "COSC — chronometer spec" : `${grade} accuracy`}
+          </p>
+          <p className="mt-1 text-muted">{gradeExplanation(grade, movement)}</p>
+        </>
+      }
+    >
+      {badge}
+    </InfoTip>
+  );
+}
+
+export function HealthBadge({
+  label, count, explain = true,
+}: {
+  label: HealthLabel | null;
+  count?: number;
+  explain?: boolean;
+}) {
+  if (!label) {
+    if (count != null && count < MIN_MEASUREMENTS_FOR_GRADE)
+      return <PendingBadge count={count} explain={explain} />;
+    return <Badge color="var(--faint)">No data</Badge>;
+  }
+  const badge = <Badge color={HEALTH_COLORS[label]}>{label}</Badge>;
+  if (!explain) return badge;
+  return (
+    <InfoTip
+      content={
+        <>
+          <p className="font-semibold" style={{ color: HEALTH_COLORS[label] }}>
+            {label}
+          </p>
+          <p className="mt-1 text-muted">{healthExplanation(label)}</p>
+        </>
+      }
+    >
+      {badge}
+    </InfoTip>
+  );
 }
 
 export function SectionTitle({

@@ -28,7 +28,7 @@ export default function WatchesPage() {
           watch: w,
           stats,
           health,
-          grade: accuracyGrade(stats.avgSpd, w.movementType, w.coscCertified),
+          grade: accuracyGrade(stats.avgSpd, w.movementType, w.coscCertified, stats.count),
           sinceService: daysSince(lastServiceDate(services) ?? w.purchaseDate ?? null),
         };
       }),
@@ -113,7 +113,7 @@ export default function WatchesPage() {
                     </p>
                   </div>
                 </div>
-                <GradeBadge grade={grade} />
+                <GradeBadge grade={grade} movement={w.movementType} count={stats.count} explain={false} />
               </div>
               <div className="mt-4 grid grid-cols-3 gap-2 text-center">
                 <div className="rounded-lg bg-surface-2/60 p-2">
@@ -133,7 +133,7 @@ export default function WatchesPage() {
               </div>
               <div className="mt-3 flex items-center justify-between text-xs text-muted">
                 <span>{stats.count} measurements</span>
-                {health && <HealthBadge label={health.label} />}
+                <HealthBadge label={health?.label ?? null} count={stats.count} explain={false} />
               </div>
               <p className="mt-2 text-[11px] text-faint">
                 Purchased {fmtDate(w.purchaseDate)} · {fmtMoney(w.currentValue, w.currency)}

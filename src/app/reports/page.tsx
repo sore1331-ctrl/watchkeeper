@@ -36,7 +36,7 @@ export default function ReportsPage() {
     const stats = computeStats(ms);
     const services = servicesFor(watch.id);
     const health = healthScore(watch, stats, services);
-    const grade = accuracyGrade(stats.avgSpd, watch.movementType, watch.coscCertified);
+    const grade = accuracyGrade(stats.avgSpd, watch.movementType, watch.coscCertified, stats.count);
 
     // Weekly summary (last full 7 days)
     const end = stats.lastMeasuredAt ? +new Date(stats.lastMeasuredAt) : Date.now();
@@ -98,7 +98,7 @@ export default function ReportsPage() {
     const rows = active.map((w) => {
       const s = computeStats(measurementsFor(w.id));
       const h = healthScore(w, s, servicesFor(w.id));
-      const g = accuracyGrade(s.avgSpd, w.movementType, w.coscCertified);
+      const g = accuracyGrade(s.avgSpd, w.movementType, w.coscCertified, s.count);
       return [w.brand, w.model, w.reference ?? "", w.movementType, w.caliber ?? "",
         s.avgSpd?.toFixed(2) ?? "", s.stdDev?.toFixed(2) ?? "", s.variance?.toFixed(2) ?? "",
         g ?? "", h?.score ?? "", s.count].join(",");
@@ -149,8 +149,8 @@ export default function ReportsPage() {
             </p>
           </div>
           <div className="flex items-center gap-3">
-            <GradeBadge grade={grade} />
-            {health && <HealthBadge label={health.label} />}
+            <GradeBadge grade={grade} movement={watch.movementType} count={stats.count} />
+            <HealthBadge label={health?.label ?? null} count={stats.count} />
           </div>
         </div>
         <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-4">

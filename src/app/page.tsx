@@ -8,8 +8,8 @@ import { ArrowRight, Battery, CalendarClock, Gauge, Watch as WatchIcon } from "l
 import { useStore } from "@/lib/store";
 import { computeStats, fmtSpd, fmtSec, rollingAverage } from "@/lib/stats";
 import {
-  accuracyGrade, batteryRemaining, daysSince, healthScore,
-  lastRegulationDate, lastServiceDate,
+  accuracyGrade, batteryRemaining, daysSince, healthExplanation, healthScore,
+  lastRegulationDate, lastServiceDate, MIN_MEASUREMENTS_FOR_GRADE,
 } from "@/lib/grades";
 import { fmtMoney, relTime } from "@/lib/utils";
 import { MeasurementDialog } from "@/components/forms";
@@ -32,7 +32,7 @@ export default function DashboardPage() {
     const stats = computeStats(ms);
     const services = servicesFor(watch.id);
     const health = healthScore(watch, stats, services);
-    const grade = accuracyGrade(stats.avgSpd, watch.movementType, watch.coscCertified);
+    const grade = accuracyGrade(stats.avgSpd, watch.movementType, watch.coscCertified, stats.count);
     const rolling = rollingAverage(stats.samples, 7);
     const chartData = stats.samples.map((s, i) => ({
       date: s.date, spd: +s.spd.toFixed(2), rolling7: +rolling[i].value.toFixed(2), offset: s.offset,
@@ -72,7 +72,7 @@ export default function DashboardPage() {
             <h1 className="text-2xl font-bold tracking-tight">
               {watch.brand} <span className="text-muted">{watch.model}</span>
             </h1>
-            <GradeBadge grade={grade} />
+            <GradeBadge grade={grade} movement={watch.movementType} count={stats.count} />
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -99,7 +99,7 @@ export default function DashboardPage() {
         <StatCard label="Avg daily rate" value={fmtSpd(stats.avgSpd)}
           sub={`median ${fmtSpd(stats.medianSpd)}`} delay={0.1} />
         <StatCard label="Movement health" value={health ? `${health.score}` : "—"}
-          sub={health ? <HealthBadge label={health.label} /> : undefined} delay={0.15} />
+          sub={<HealthBadge label={health?.label ?? null} count={stats.count} />} delay={0.15} />
         <StatCard label="Weekly variance" value={stats.weeklyVariance?.toFixed(2) ?? "—"}
           sub="s²/d, last 7 days" delay={0.2} />
         <StatCard label="Monthly variance" value={stats.monthlyVariance?.toFixed(2) ?? "—"}
@@ -135,15 +135,23 @@ export default function DashboardPage() {
         <ChartCard title="Accuracy heatmap" sub="daily |rate| by calendar day" className="lg:col-span-2">
           <AccuracyHeatmap samples={stats.samples} />
         </ChartCard>
-        <Card className="flex flex-col items-center justify-center gap-3 p-6">
+        <Card className="flex flex-col items-center justify-center gap-3 p-6 text-center">
           <p className="text-sm font-semibold">Movement health</p>
           {health ? (
             <>
               <HealthRing score={health.score} label={health.label} />
               <HealthBadge label={health.label} />
+              <p className="text-xs text-muted">{healthExplanation(health.label)}</p>
             </>
           ) : (
-            <p className="text-xs text-muted">Not enough data yet.</p>
+            <>
+              <HealthBadge label={null} count={stats.count} />
+              <p className="text-xs text-muted">
+                {stats.count < MIN_MEASUREMENTS_FOR_GRADE
+                  ? `Health scoring starts at ${MIN_MEASUREMENTS_FOR_GRADE} measurements — ${MIN_MEASUREMENTS_FOR_GRADE - stats.count} to go.`
+                  : "Not enough data yet."}
+              </p>
+            </>
           )}
         </Card>
       </div>
@@ -184,7 +192,7 @@ export default function DashboardPage() {
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         {active.map((w) => {
           const s = computeStats(measurementsFor(w.id));
-          const g = accuracyGrade(s.avgSpd, w.movementType, w.coscCertified);
+          const g = accuracyGrade(s.avgSpd, w.movementType, w.coscCertified, s.count);
           return (
             <Link key={w.id} href={`/watches/${w.id}`}>
               <Card className="group cursor-pointer p-4 transition-colors hover:border-accent/40">
@@ -200,7 +208,8 @@ export default function DashboardPage() {
                 </div>
                 <div className="mt-3 flex items-center justify-between">
                   <span className="text-sm font-bold tabular-nums">{fmtSpd(s.avgSpd)}</span>
-                  <GradeBadge grade={g} />
+                  {/* inside a Link — no popover trigger (nested interactive) */}
+                  <GradeBadge grade={g} movement={w.movementType} count={s.count} explain={false} />
                 </div>
               </Card>
             </Link>

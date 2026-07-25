@@ -195,6 +195,18 @@ export function MeasurementDialog({
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) =>
     setForm((f) => ({ ...f, [k]: v }));
 
+  /** Stamp both time fields with the current clock — on open and on demand. */
+  const syncToNow = () => {
+    const t = nowHms();
+    setForm((f) => ({ ...f, referenceTime: t, watchTime: t }));
+  };
+
+  const handleOpenChange = (next: boolean) => {
+    // the clock must read "now" at the moment you open the form, not page load
+    if (next) syncToNow();
+    setOpen(next);
+  };
+
   const offset = useMemo(() => {
     const ref = parseHms(form.referenceTime);
     const wt = parseHms(form.watchTime);
@@ -237,7 +249,7 @@ export function MeasurementDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         {trigger ?? (
           <Button>
@@ -259,7 +271,16 @@ export function MeasurementDialog({
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label>Reference time (atomic)</Label>
+              <div className="flex items-baseline justify-between">
+                <Label>Reference time (atomic)</Label>
+                <button
+                  type="button"
+                  onClick={syncToNow}
+                  className="mb-1.5 cursor-pointer text-[11px] font-medium text-accent hover:underline"
+                >
+                  Now
+                </button>
+              </div>
               <TimeInput
                 value={form.referenceTime}
                 onChange={(v) => set("referenceTime", v)}
