@@ -9,7 +9,7 @@ import { useStore } from "@/lib/store";
 import { computeStats, fmtSpd, fmtSec, rollingAverage } from "@/lib/stats";
 import {
   accuracyGrade, batteryRemaining, daysSince, healthExplanation, healthScore,
-  lastRegulationDate, lastServiceDate, MIN_MEASUREMENTS_FOR_GRADE,
+  lastRegulationDate, lastServiceDate, MIN_MEASUREMENTS_FOR_GRADE, rateSpecFor,
 } from "@/lib/grades";
 import { fmtMoney, relTime } from "@/lib/utils";
 import { MeasurementDialog } from "@/components/forms";
@@ -32,12 +32,15 @@ export default function DashboardPage() {
     const stats = computeStats(ms);
     const services = servicesFor(watch.id);
     const health = healthScore(watch, stats, services);
-    const grade = accuracyGrade(stats.avgSpd, watch.movementType, watch.coscCertified, stats.count);
+    const spec = rateSpecFor(watch);
+    const grade = accuracyGrade(
+      stats.avgSpd, watch.movementType, watch.coscCertified, stats.count, spec
+    );
     const rolling = rollingAverage(stats.samples, 7);
     const chartData = stats.samples.map((s, i) => ({
       date: s.date, spd: +s.spd.toFixed(2), rolling7: +rolling[i].value.toFixed(2), offset: s.offset,
     }));
-    return { ms, stats, services, health, grade, chartData };
+    return { ms, stats, services, health, grade, spec, chartData };
   }, [watch, measurementsFor, servicesFor]);
 
   if (!ready || !watch || !data) {
@@ -51,7 +54,7 @@ export default function DashboardPage() {
     );
   }
 
-  const { stats, services, health, grade, chartData } = data;
+  const { stats, services, health, grade, spec, chartData } = data;
   const batt = batteryRemaining(watch);
   const regDays = daysSince(lastRegulationDate(services));
   const svcDays = daysSince(lastServiceDate(services) ?? watch.purchaseDate ?? null);
@@ -72,7 +75,8 @@ export default function DashboardPage() {
             <h1 className="text-2xl font-bold tracking-tight">
               {watch.brand} <span className="text-muted">{watch.model}</span>
             </h1>
-            <GradeBadge grade={grade} movement={watch.movementType} count={stats.count} />
+            <GradeBadge grade={grade} movement={watch.movementType} count={stats.count}
+              spec={spec} avgSpd={stats.avgSpd} />
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -124,7 +128,7 @@ export default function DashboardPage() {
       {/* Charts */}
       <div className="mt-6 grid gap-4 lg:grid-cols-2">
         <ChartCard title="Daily rate" sub="seconds/day with 7-day rolling average">
-          <RateChart data={chartData} color={watch.accentColor} coscBand={watch.coscCertified} zoom={false} />
+          <RateChart data={chartData} color={watch.accentColor} spec={spec} zoom={false} />
         </ChartCard>
         <ChartCard title="Offset history" sub="cumulative deviation from reference time">
           <OffsetChart data={chartData} color={watch.accentColor} height={260} zoom={false} />
@@ -192,7 +196,7 @@ export default function DashboardPage() {
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         {active.map((w) => {
           const s = computeStats(measurementsFor(w.id));
-          const g = accuracyGrade(s.avgSpd, w.movementType, w.coscCertified, s.count);
+          const g = accuracyGrade(s.avgSpd, w.movementType, w.coscCertified, s.count, rateSpecFor(w));
           return (
             <Link key={w.id} href={`/watches/${w.id}`}>
               <Card className="group cursor-pointer p-4 transition-colors hover:border-accent/40">

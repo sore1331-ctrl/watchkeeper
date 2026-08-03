@@ -15,6 +15,7 @@ import {
 import {
   accuracyGrade, batteryRemaining, daysSince, healthExplanation, healthScore,
   lastRegulationDate, lastServiceDate, MIN_MEASUREMENTS_FOR_GRADE, nextServiceEstimate,
+  rateSpecFor,
 } from "@/lib/grades";
 import { fmtDate, fmtDateTime, fmtMoney } from "@/lib/utils";
 import { MeasurementDialog, ServiceDialog, WatchDialog } from "@/components/forms";
@@ -23,7 +24,7 @@ import {
   TempScatter, WearFrequencyChart,
 } from "@/components/charts";
 import {
-  ChartCard, GradeBadge, HealthBadge, HealthRing, ScoreBar, StatCard,
+  ChartCard, ConditionBreakdown, GradeBadge, HealthBadge, HealthRing, ScoreBar, StatCard,
 } from "@/components/widgets";
 import { Badge, Button, Card, Empty, Skeleton, Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui";
 import { MeasurementsTable } from "@/components/measurements-table";
@@ -76,7 +77,10 @@ export default function WatchDetailPage() {
     return {
       ms, stats, services,
       health: healthScore(watch, stats, services),
-      grade: accuracyGrade(stats.avgSpd, watch.movementType, watch.coscCertified, stats.count),
+      spec: rateSpecFor(watch),
+      grade: accuracyGrade(
+        stats.avgSpd, watch.movementType, watch.coscCertified, stats.count, rateSpecFor(watch)
+      ),
       anomaly: detectAnomaly(stats.samples),
       chartData, weekly, monthly, forecast, history, wearByDay, tempData,
     };
@@ -91,7 +95,7 @@ export default function WatchDetailPage() {
     );
   }
 
-  const { stats, services, health, grade, anomaly } = data;
+  const { stats, services, health, grade, anomaly, spec } = data;
   const batt = batteryRemaining(watch);
   const nextSvc = nextServiceEstimate(watch, services);
   const watchInsights = insights.filter((i) => i.watchId === watch.id);
@@ -108,7 +112,13 @@ export default function WatchDetailPage() {
             <h1 className="text-2xl font-bold tracking-tight">
               {watch.brand} <span className="text-muted">{watch.model}</span>
             </h1>
-            <GradeBadge grade={grade} movement={watch.movementType} count={stats.count} />
+            <GradeBadge grade={grade} movement={watch.movementType} count={stats.count}
+              spec={spec} avgSpd={stats.avgSpd} />
+            {spec && (
+              <Badge color="var(--faint)">
+                spec {spec.min > 0 ? "+" : ""}{spec.min} / {spec.max > 0 ? "+" : ""}{spec.max} s/d
+              </Badge>
+            )}
             {watch.coscCertified && (
               <Badge color="#c9a227"><ShieldCheck className="h-3 w-3" /> COSC certified</Badge>
             )}
@@ -142,8 +152,12 @@ export default function WatchDetailPage() {
         <StatCard label="Current offset" value={fmtSec(stats.currentOffset)} accent={watch.accentColor}
           sub={`measured ${fmtDateTime(stats.lastMeasuredAt)}`} />
         <StatCard label="Average rate" value={fmtSpd(stats.avgSpd)} sub={`median ${fmtSpd(stats.medianSpd)}`} delay={0.05} />
-        <StatCard label="Std deviation" value={stats.stdDev != null ? `±${stats.stdDev.toFixed(2)}` : "—"}
-          sub={`variance ${stats.variance?.toFixed(2) ?? "—"} s²/d`} delay={0.1} />
+        <StatCard label="Std deviation"
+          value={stats.adjustedStdDev != null ? `±${stats.adjustedStdDev.toFixed(2)}` : "—"}
+          sub={stats.conditions?.reliable
+            ? `within position · raw ±${stats.stdDev?.toFixed(2)}`
+            : `variance ${stats.variance?.toFixed(2) ?? "—"} s²/d`}
+          delay={0.1} />
         <StatCard label="Consistency" value={stats.consistencyIndex != null ? `${stats.consistencyIndex}%` : "—"}
           sub="within 1σ of mean" delay={0.15} />
         <StatCard label="Max gain" value={fmtSpd(stats.maxGain)} delay={0.2} />
@@ -178,8 +192,13 @@ export default function WatchDetailPage() {
 
         <TabsContent value="performance" className="mt-4 space-y-4">
           <div className="grid gap-4 lg:grid-cols-2">
-            <ChartCard title="Daily rate" sub="s/d with 7-day rolling average — drag the brush to zoom">
-              <RateChart data={data.chartData} color={watch.accentColor} coscBand={watch.coscCertified} />
+            <ChartCard
+              title="Daily rate"
+              sub={spec
+                ? `s/d — shaded band is the ${spec.source} tolerance (${spec.min > 0 ? "+" : ""}${spec.min}/${spec.max > 0 ? "+" : ""}${spec.max} s/d)`
+                : "s/d with 7-day rolling average — drag the brush to zoom"}
+            >
+              <RateChart data={data.chartData} color={watch.accentColor} spec={spec} />
             </ChartCard>
             <ChartCard title="Offset history" sub="cumulative deviation">
               <OffsetChart data={data.chartData} color={watch.accentColor} height={260} />
@@ -204,6 +223,13 @@ export default function WatchDetailPage() {
               <WearFrequencyChart data={data.wearByDay} color={watch.accentColor} height={200} />
             </ChartCard>
           </div>
+          <ChartCard
+            title="Rate by position"
+            sub="how the movement behaves in each position it was kept in"
+          >
+            <ConditionBreakdown conditions={stats.conditions} color={watch.accentColor} spec={spec} />
+          </ChartCard>
+
           <div className="grid gap-4 lg:grid-cols-2">
             <ChartCard title="Accuracy heatmap" sub="hover a cell for the exact rate">
               <AccuracyHeatmap samples={stats.samples} />

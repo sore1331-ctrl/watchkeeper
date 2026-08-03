@@ -148,6 +148,15 @@ const PERSONALITIES: Record<string, Personality> = {
 const pad = (n: number) => String(n).padStart(2, "0");
 const hms = (d: Date) => `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 
+interface DemoPoint {
+  date: Date;
+  day: number;
+  worn: boolean;
+  position: WatchPosition;
+  temp: number;
+  powerReserve?: number;
+}
+
 export function generateDemoMeasurements(now = new Date()): Measurement[] {
   const out: Measurement[] = [];
   const HISTORY_DAYS = 150;
@@ -155,12 +164,10 @@ export function generateDemoMeasurements(now = new Date()): Measurement[] {
   for (const watch of DEMO_WATCHES) {
     const p = PERSONALITIES[watch.id];
     const r = rng(watch.id.split("").reduce((a, c) => a + c.charCodeAt(0) * 31, 7));
-    let offset = (r() - 0.5) * 4;
-    let day = 0;
-    let idx = 0;
-    let gapDaysPrev = 0;
 
-    while (day <= HISTORY_DAYS) {
+    // 1. lay out the measurement points and the conditions recorded at each
+    const points: DemoPoint[] = [];
+    for (let day = 0; day <= HISTORY_DAYS; ) {
       const date = new Date(now);
       date.setDate(date.getDate() - (HISTORY_DAYS - day));
       date.setHours(7 + Math.floor(r() * 3), Math.floor(r() * 60), Math.floor(r() * 60), 0);
@@ -171,52 +178,65 @@ export function generateDemoMeasurements(now = new Date()): Measurement[] {
           ? r() < (isWeekend ? 0.85 : 0.12) // weekend watch
           : r() < p.wearProb;
 
-      const temp = 20 + gauss(r) * 3 + (isWeekend ? 1 : 0);
-      const position = worn ? ("on-wrist" as WatchPosition) : POSITIONS[Math.floor(r() * POSITIONS.length)];
-      const posBias = p.positionBias[position] ?? 0;
-      const powerReserve =
-        watch.movementType === "quartz"
-          ? undefined
-          : Math.round(Math.max(5, Math.min(100, worn ? 70 + r() * 30 : 25 + r() * 45)));
+      points.push({
+        date,
+        day,
+        worn,
+        position: worn ? "on-wrist" : POSITIONS[Math.floor(r() * POSITIONS.length)],
+        temp: 20 + gauss(r) * 3 + (isWeekend ? 1 : 0),
+        powerReserve:
+          watch.movementType === "quartz"
+            ? undefined
+            : Math.round(Math.max(5, Math.min(100, worn ? 70 + r() * 30 : 25 + r() * 45))),
+      });
+      day += Math.max(1, Math.round(p.measureEvery[0] + r() * (p.measureEvery[1] - p.measureEvery[0])));
+    }
+
+    // 2. the rate over an interval is driven by the conditions the watch was
+    //    left in at the START of it — that is what the app assumes when it
+    //    groups samples by condition, so the demo data must follow the same
+    //    physics to be a fair test of the analysis.
+    const rateAt = (pt: DemoPoint) => {
+      const shift = p.recentShift && pt.day >= p.recentShift.fromDay ? p.recentShift : null;
       const prEffect =
-        p.powerReserveEffect && powerReserve != null && powerReserve < 35 ? p.powerReserveEffect : 0;
-
-      const shift = p.recentShift && day >= p.recentShift.fromDay ? p.recentShift : null;
-      const spd =
+        p.powerReserveEffect && pt.powerReserve != null && pt.powerReserve < 35
+          ? p.powerReserveEffect
+          : 0;
+      return (
         p.baseSpd +
-        p.driftPerDay * day +
+        p.driftPerDay * pt.day +
         (shift?.deltaSpd ?? 0) +
-        posBias +
+        (p.positionBias[pt.position] ?? 0) +
         prEffect +
-        (temp - 22) * p.tempSensitivity +
-        gauss(r) * p.sigma * (shift?.sigmaMult ?? 1);
+        (pt.temp - 22) * p.tempSensitivity +
+        gauss(r) * p.sigma * (shift?.sigmaMult ?? 1)
+      );
+    };
 
-      // advance offset by spd × gap
-      const gap = Math.max(1, Math.round(p.measureEvery[0] + r() * (p.measureEvery[1] - p.measureEvery[0])));
-      if (day > 0) offset += spd * gapDaysPrev;
-
-      const ref = new Date(date);
-      const wt = new Date(+date + Math.round(offset * 1000));
-
+    let offset = (r() - 0.5) * 4;
+    points.forEach((pt, i) => {
+      if (i > 0) {
+        const prev = points[i - 1];
+        const gapDays = (+pt.date - +prev.date) / 86_400_000;
+        offset += rateAt(prev) * gapDays;
+      }
+      const wt = new Date(+pt.date + Math.round(offset * 1000));
       out.push({
-        id: `${watch.id}-m${idx++}`,
+        id: `${watch.id}-m${i}`,
         watchId: watch.id,
-        measuredAt: date.toISOString(),
-        referenceTime: hms(ref),
+        measuredAt: pt.date.toISOString(),
+        referenceTime: hms(pt.date),
         watchTime: hms(wt),
         offsetSeconds: Math.round(offset * 10) / 10,
-        temperatureC: Math.round(temp * 10) / 10,
-        position,
-        powerReservePct: powerReserve,
-        wornToday: worn,
+        temperatureC: Math.round(pt.temp * 10) / 10,
+        position: pt.position,
+        powerReservePct: pt.powerReserve,
+        wornToday: pt.worn,
         notes:
-          idx % 23 === 0 ? "Synced against NTP pool before measuring." :
-          idx % 17 === 0 ? "Left on winder overnight." : undefined,
+          i % 23 === 0 && i > 0 ? "Synced against NTP pool before measuring." :
+          i % 17 === 0 && i > 0 ? "Left on winder overnight." : undefined,
       });
-
-      gapDaysPrev = gap; // used next iteration
-      day += gap;
-    }
+    });
   }
   return out.sort((a, b) => +new Date(a.measuredAt) - +new Date(b.measuredAt));
 }

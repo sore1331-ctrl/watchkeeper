@@ -7,7 +7,7 @@ import Link from "next/link";
 import { Plus, Watch as WatchIcon } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { computeStats, fmtSpd } from "@/lib/stats";
-import { accuracyGrade, daysSince, healthScore, lastServiceDate } from "@/lib/grades";
+import { accuracyGrade, daysSince, healthScore, lastServiceDate, rateSpecFor } from "@/lib/grades";
 import { fmtMoney, fmtDate } from "@/lib/utils";
 import { WatchDialog } from "@/components/forms";
 import { GradeBadge, HealthBadge, SectionTitle, StatCard } from "@/components/widgets";
@@ -28,7 +28,9 @@ export default function WatchesPage() {
           watch: w,
           stats,
           health,
-          grade: accuracyGrade(stats.avgSpd, w.movementType, w.coscCertified, stats.count),
+          grade: accuracyGrade(
+            stats.avgSpd, w.movementType, w.coscCertified, stats.count, rateSpecFor(w)
+          ),
           sinceService: daysSince(lastServiceDate(services) ?? w.purchaseDate ?? null),
         };
       }),

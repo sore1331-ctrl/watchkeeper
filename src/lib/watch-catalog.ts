@@ -15,6 +15,60 @@ export interface CatalogModel {
   cosc?: boolean;
 }
 
+// ─── Manufacturer daily-rate specifications ─────────────────────────────────
+// A movement should be judged against the tolerance its maker built it to, not
+// against a single universal scale. A Seiko 4R34 at −28 s/d is inside spec and
+// healthy; a Rolex 3235 at −28 s/d is badly out. Only specs that manufacturers
+// actually publish are listed — anything unknown falls back to a generic scale
+// and can be overridden per watch in the watch profile.
+
+export interface RateSpec {
+  min: number; // s/d
+  max: number; // s/d
+  source: string;
+}
+
+const CALIBER_SPECS: { match: RegExp; spec: RateSpec }[] = [
+  // Rolex — Superlative Chronometer (after casing)
+  { match: /^(31\d\d|32\d\d|41\d\d|21\d\d)$/i, spec: { min: -2, max: 2, source: "Rolex Superlative Chronometer" } },
+  // Omega — METAS Master Chronometer
+  { match: /^(88\d\d|89\d\d|3861|3220)$/i, spec: { min: 0, max: 5, source: "METAS Master Chronometer" } },
+  // Tudor Manufacture
+  { match: /^MT\d{4}/i, spec: { min: -2, max: 4, source: "Tudor Manufacture (COSC)" } },
+  // Grand Seiko 9F quartz — ±10 s/year
+  { match: /^9F\d\d$/i, spec: { min: -0.03, max: 0.03, source: "Grand Seiko 9F (±10 s/year)" } },
+  // Grand Seiko mechanical 9S — static rate
+  { match: /^9S/i, spec: { min: -3, max: 5, source: "Grand Seiko 9S standard" } },
+  // Seiko workhorses
+  { match: /^4R\d\d/i, spec: { min: -35, max: 45, source: "Seiko 4R3x specification" } },
+  { match: /^6R\d\d/i, spec: { min: -15, max: 25, source: "Seiko 6R3x specification" } },
+  { match: /^7S\d\d/i, spec: { min: -20, max: 40, source: "Seiko 7S2x specification" } },
+  { match: /^NH\d\d/i, spec: { min: -20, max: 40, source: "Seiko NH3x specification" } },
+  // Miyota
+  { match: /Miyota\s*(90\d\d)/i, spec: { min: -10, max: 30, source: "Miyota 90xx specification" } },
+  { match: /Miyota\s*(8[23]\d\d)/i, spec: { min: -20, max: 40, source: "Miyota 8xxx specification" } },
+];
+
+const COSC_SPEC: RateSpec = { min: -4, max: 6, source: "COSC chronometer" };
+
+/**
+ * Best-known rate tolerance for a caliber. COSC certification wins, since a
+ * certified movement is tested to that band regardless of its base caliber.
+ */
+export function specForCaliber(caliber?: string, coscCertified?: boolean): RateSpec | null {
+  const c = caliber?.trim();
+  if (c) {
+    for (const { match, spec } of CALIBER_SPECS) {
+      if (match.test(c)) {
+        // A certified chronometer is held to the tighter of the two bands
+        if (coscCertified && spec.max - spec.min > COSC_SPEC.max - COSC_SPEC.min) return COSC_SPEC;
+        return spec;
+      }
+    }
+  }
+  return coscCertified ? COSC_SPEC : null;
+}
+
 export const WATCH_BRANDS: string[] = [
   "A. Lange & Söhne", "Audemars Piguet", "Baltic", "Blancpain", "Breitling",
   "Bulova", "Cartier", "Casio", "Certina", "Christopher Ward", "Citizen",
@@ -56,6 +110,8 @@ export const WATCH_MODELS: Record<string, CatalogModel[]> = {
     { model: "Presage Sharp Edged", reference: "SPB165J1", movementType: "automatic", caliber: "6R35", beatRate: 21600, powerReserveHours: 70, jewels: 24 },
     { model: "SKX007", reference: "SKX007K2", movementType: "automatic", caliber: "7S26", beatRate: 21600, powerReserveHours: 41, jewels: 21 },
     { model: "Seiko 5 Sports SRPD", reference: "SRPD55K1", movementType: "automatic", caliber: "4R36", beatRate: 21600, powerReserveHours: 41, jewels: 24 },
+    { model: "5 Sports GMT SSK001", reference: "SSK001K1", movementType: "automatic", caliber: "4R34", beatRate: 21600, powerReserveHours: 41, jewels: 24 },
+    { model: "5 Sports GMT SSK003", reference: "SSK003K1", movementType: "automatic", caliber: "4R34", beatRate: 21600, powerReserveHours: 41, jewels: 24 },
     { model: "Turtle", reference: "SRP777K1", movementType: "automatic", caliber: "4R36", beatRate: 21600, powerReserveHours: 41, jewels: 24 },
     { model: "Samurai", reference: "SRPB51K1", movementType: "automatic", caliber: "4R35", beatRate: 21600, powerReserveHours: 41, jewels: 23 },
     { model: "Alpinist", reference: "SPB121J1", movementType: "automatic", caliber: "6R35", beatRate: 21600, powerReserveHours: 70, jewels: 24 },

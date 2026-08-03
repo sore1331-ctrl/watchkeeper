@@ -84,6 +84,14 @@ export interface Watch {
   powerReserveHours?: number;
   jewels?: number;
   coscCertified: boolean;
+  /**
+   * Manufacturer's daily rate tolerance in seconds/day (e.g. Seiko 4R34 is
+   * −35/+45). Grading is judged against this band when known, rather than
+   * against a generic chronometer scale.
+   */
+  rateSpecMin?: number;
+  rateSpecMax?: number;
+  rateSpecSource?: string;
   purchaseDate?: string;
   purchasePrice?: number;
   currentValue?: number;

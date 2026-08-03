@@ -7,7 +7,9 @@ import { Plus } from "lucide-react";
 import { useStore } from "@/lib/store";
 import type { Measurement, MovementType, ServiceRecord, ServiceType, Watch, WatchPosition } from "@/lib/types";
 import { Button, Dialog, DialogContent, DialogTrigger, Input, Label, Select, Switch, Textarea } from "./ui";
-import { filterSuggestions, modelsForBrand, WATCH_BRANDS, type CatalogModel } from "@/lib/watch-catalog";
+import {
+  filterSuggestions, modelsForBrand, specForCaliber, WATCH_BRANDS, type CatalogModel,
+} from "@/lib/watch-catalog";
 
 // ── Autocomplete input ──────────────────────────────────────────────────────
 interface Suggestion {
@@ -374,6 +376,8 @@ export function WatchDialog({
     powerReserveHours: existing?.powerReserveHours?.toString() ?? "",
     jewels: existing?.jewels?.toString() ?? "",
     coscCertified: existing?.coscCertified ?? false,
+    rateSpecMin: existing?.rateSpecMin?.toString() ?? "",
+    rateSpecMax: existing?.rateSpecMax?.toString() ?? "",
     purchaseDate: existing?.purchaseDate ?? "",
     purchasePrice: existing?.purchasePrice?.toString() ?? "",
     currentValue: existing?.currentValue?.toString() ?? "",
@@ -406,6 +410,13 @@ export function WatchDialog({
     [form.model, brandModels]
   );
 
+  // Spec implied by the caliber the user has typed/picked — shown as the
+  // placeholder so it's clear what the watch will be graded against.
+  const detectedSpec = useMemo(
+    () => specForCaliber(form.caliber, form.coscCertified),
+    [form.caliber, form.coscCertified]
+  );
+
   /** Prefill specs from the catalog, only into fields the user hasn't filled. */
   const applyModel = (label: string) => {
     const m: CatalogModel | undefined = brandModels.find((x) => x.model === label);
@@ -435,6 +446,11 @@ export function WatchDialog({
       powerReserveHours: form.powerReserveHours ? +form.powerReserveHours : undefined,
       jewels: form.jewels ? +form.jewels : undefined,
       coscCertified: form.coscCertified,
+      rateSpecMin: form.rateSpecMin === "" ? undefined : +form.rateSpecMin,
+      rateSpecMax: form.rateSpecMax === "" ? undefined : +form.rateSpecMax,
+      rateSpecSource: form.rateSpecMin !== "" && form.rateSpecMax !== ""
+        ? (existing?.rateSpecSource ?? "Custom specification")
+        : undefined,
       purchaseDate: form.purchaseDate || undefined,
       purchasePrice: form.purchasePrice ? +form.purchasePrice : undefined,
       currentValue: form.currentValue ? +form.currentValue : undefined,
@@ -502,6 +518,37 @@ export function WatchDialog({
             <div><Label>Reserve (h)</Label><Input type="number" value={form.powerReserveHours} onChange={(e) => set("powerReserveHours", e.target.value)} placeholder="70" /></div>
             <div><Label>Jewels</Label><Input type="number" value={form.jewels} onChange={(e) => set("jewels", e.target.value)} placeholder="26" /></div>
           </div>
+          {/* Manufacturer rate tolerance — what the movement is graded against */}
+          <div>
+            <div className="flex items-baseline justify-between">
+              <Label>Rate specification (s/day)</Label>
+              {detectedSpec && (
+                <span className="mb-1.5 text-[11px] text-faint">
+                  {form.rateSpecMin === "" && form.rateSpecMax === ""
+                    ? `Using ${detectedSpec.source}`
+                    : "Overriding detected spec"}
+                </span>
+              )}
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Input
+                type="number" value={form.rateSpecMin}
+                onChange={(e) => set("rateSpecMin", e.target.value)}
+                placeholder={detectedSpec ? `${detectedSpec.min} (min)` : "-35 (min)"}
+              />
+              <Input
+                type="number" value={form.rateSpecMax}
+                onChange={(e) => set("rateSpecMax", e.target.value)}
+                placeholder={detectedSpec ? `${detectedSpec.max} (max)` : "+45 (max)"}
+              />
+            </div>
+            <p className="mt-1 text-[11px] text-faint">
+              {detectedSpec
+                ? `Detected from the caliber — leave blank to use it. Accuracy grading is judged against this band, not a universal scale.`
+                : `Optional. Your movement's published tolerance (e.g. Seiko 4R34 is −35/+45). Without it a generic scale is used.`}
+            </p>
+          </div>
+
           {form.movementType === "quartz" && (
             <div className="grid grid-cols-2 gap-3">
               <div><Label>Battery installed</Label><Input type="date" value={form.batteryInstalledAt} onChange={(e) => set("batteryInstalledAt", e.target.value)} /></div>

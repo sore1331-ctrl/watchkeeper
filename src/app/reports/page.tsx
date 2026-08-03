@@ -8,7 +8,7 @@ import { useStore } from "@/lib/store";
 import {
   computeStats, fmtSpd, groupByPeriod, isoWeekKey, mean, stdDev, variance,
 } from "@/lib/stats";
-import { accuracyGrade, healthScore, nextServiceEstimate } from "@/lib/grades";
+import { accuracyGrade, healthScore, nextServiceEstimate, rateSpecFor } from "@/lib/grades";
 import { GradeBadge, HealthBadge, SectionTitle, StatCard } from "@/components/widgets";
 import { Button, Card, Skeleton, Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui";
 import { exportMeasurementsCsv } from "@/components/measurements-table";
@@ -36,7 +36,10 @@ export default function ReportsPage() {
     const stats = computeStats(ms);
     const services = servicesFor(watch.id);
     const health = healthScore(watch, stats, services);
-    const grade = accuracyGrade(stats.avgSpd, watch.movementType, watch.coscCertified, stats.count);
+    const spec = rateSpecFor(watch);
+    const grade = accuracyGrade(
+      stats.avgSpd, watch.movementType, watch.coscCertified, stats.count, spec
+    );
 
     // Weekly summary (last full 7 days)
     const end = stats.lastMeasuredAt ? +new Date(stats.lastMeasuredAt) : Date.now();
@@ -62,7 +65,7 @@ export default function ReportsPage() {
       count: month.length,
       avg: mean(month.map((s) => s.spd)),
       variance: variance(month.map((s) => s.spd)),
-      wear: month.filter((s) => s.wornToday).length / month.length,
+      wear: month.filter((s) => s.worn).length / month.length,
       best, worst, stable, unstable,
     } : null;
 
@@ -98,7 +101,7 @@ export default function ReportsPage() {
     const rows = active.map((w) => {
       const s = computeStats(measurementsFor(w.id));
       const h = healthScore(w, s, servicesFor(w.id));
-      const g = accuracyGrade(s.avgSpd, w.movementType, w.coscCertified, s.count);
+      const g = accuracyGrade(s.avgSpd, w.movementType, w.coscCertified, s.count, rateSpecFor(w));
       return [w.brand, w.model, w.reference ?? "", w.movementType, w.caliber ?? "",
         s.avgSpd?.toFixed(2) ?? "", s.stdDev?.toFixed(2) ?? "", s.variance?.toFixed(2) ?? "",
         g ?? "", h?.score ?? "", s.count].join(",");

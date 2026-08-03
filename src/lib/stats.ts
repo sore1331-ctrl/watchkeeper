@@ -13,9 +13,15 @@ export interface RateSample {
   offset: number;
   /** hours between the two measurements */
   gapHours: number;
-  wornToday: boolean;
+  /**
+   * Conditions the watch was kept in *during* this interval. These come from
+   * the earlier measurement — the state you recorded when you set the watch
+   * down is what governs how it ran until you picked it up again.
+   */
+  worn: boolean;
   position?: string;
   temperatureC?: number;
+  powerReservePct?: number;
 }
 
 export interface WatchStats {
@@ -30,6 +36,15 @@ export interface WatchStats {
   maxLoss: number | null;
   stdDev: number | null;
   variance: number | null;
+  /**
+   * Spread after positional/wear differences are removed. This is what
+   * "unstable" should mean — raw variance also contains the watch's normal
+   * dial-up vs crown-down delta. Falls back to raw σ when conditions
+   * aren't recorded consistently enough to separate them.
+   */
+  adjustedStdDev: number | null;
+  adjustedVariance: number | null;
+  conditions: ConditionAnalysis | null;
   weeklyVariance: number | null;
   monthlyVariance: number | null;
   rolling7: number | null;
@@ -107,9 +122,11 @@ export function rateSamples(measurements: Measurement[]): RateSample[] {
       spd: (cur.offsetSeconds - prev.offsetSeconds) / gapDays,
       offset: cur.offsetSeconds,
       gapHours: gapMs / 3_600_000,
-      wornToday: cur.wornToday,
-      position: cur.position,
-      temperatureC: cur.temperatureC,
+      // conditions during the interval = how the watch was left at its start
+      worn: prev.wornToday,
+      position: prev.wornToday ? "on-wrist" : prev.position,
+      temperatureC: prev.temperatureC,
+      powerReservePct: prev.powerReservePct,
     });
   }
   return out;
@@ -131,6 +148,108 @@ export function rollingAverage(samples: RateSample[], windowDays: number): { dat
   });
 }
 
+// ─── Condition-aware analysis ───────────────────────────────────────────────
+// A mechanical watch does not have one rate — it has a rate per position, and
+// another when worn. Averaging those together inflates "variance" with what is
+// really normal positional behaviour. These helpers separate the two:
+//   • within-condition spread  → genuine instability (what stability should use)
+//   • between-condition spread → positional delta (an expected characteristic)
+
+export const CONDITION_LABELS: Record<string, string> = {
+  "on-wrist": "Worn",
+  "dial-up": "Dial up",
+  "dial-down": "Dial down",
+  "crown-up": "Crown up",
+  "crown-down": "Crown down",
+  "crown-left": "Crown left",
+  "crown-right": "Crown right",
+  unknown: "Unrecorded",
+};
+
+export interface ConditionGroup {
+  key: string;
+  label: string;
+  n: number;
+  mean: number;
+  sd: number;
+  worn: boolean;
+}
+
+export interface ConditionAnalysis {
+  groups: ConditionGroup[];
+  /** pooled within-condition σ — instability with positional effects removed */
+  withinSd: number;
+  withinVariance: number;
+  /** spread between condition means — the watch's positional delta */
+  betweenSpread: number;
+  /** share of total variance explained by condition alone (0–1) */
+  explained: number;
+  /** enough samples per condition to trust the split */
+  reliable: boolean;
+  /** each sample's deviation from its own condition's mean */
+  residuals: { date: string; value: number }[];
+}
+
+const conditionKey = (s: RateSample): string =>
+  s.worn ? "on-wrist" : (s.position ?? "unknown");
+
+/** Minimum samples in a condition before its mean is trusted. */
+const MIN_PER_CONDITION = 3;
+
+export function analyzeConditions(samples: RateSample[]): ConditionAnalysis | null {
+  if (samples.length < 2) return null;
+
+  const buckets = new Map<string, RateSample[]>();
+  for (const s of samples) {
+    const k = conditionKey(s);
+    if (!buckets.has(k)) buckets.set(k, []);
+    buckets.get(k)!.push(s);
+  }
+
+  const groups: ConditionGroup[] = [...buckets.entries()]
+    .map(([key, xs]) => ({
+      key,
+      label: CONDITION_LABELS[key] ?? key,
+      n: xs.length,
+      mean: mean(xs.map((x) => x.spd)),
+      sd: xs.length >= 2 ? stdDev(xs.map((x) => x.spd)) : 0,
+      worn: xs[0].worn,
+    }))
+    .sort((a, b) => b.n - a.n);
+
+  const trusted = groups.filter((g) => g.n >= MIN_PER_CONDITION);
+  const overall = mean(samples.map((s) => s.spd));
+  const meanFor = (k: string) =>
+    trusted.find((g) => g.key === k)?.mean ?? overall;
+
+  // pooled within-condition variance
+  let num = 0;
+  let den = 0;
+  for (const g of groups) {
+    if (g.n < 2) continue;
+    num += (g.n - 1) * g.sd ** 2;
+    den += g.n - 1;
+  }
+  const withinVariance = den > 0 ? num / den : variance(samples.map((s) => s.spd));
+  const totalVariance = variance(samples.map((s) => s.spd));
+
+  const means = trusted.map((g) => g.mean);
+  const betweenSpread = means.length >= 2 ? Math.max(...means) - Math.min(...means) : 0;
+
+  return {
+    groups,
+    withinSd: Math.sqrt(withinVariance),
+    withinVariance,
+    betweenSpread,
+    explained: totalVariance > 0 ? Math.max(0, Math.min(1, 1 - withinVariance / totalVariance)) : 0,
+    reliable: trusted.length >= 2 && samples.length >= 8,
+    residuals: samples.map((s) => ({
+      date: s.date,
+      value: s.spd - meanFor(conditionKey(s)),
+    })),
+  };
+}
+
 export function computeStats(measurements: Measurement[]): WatchStats {
   const ms = [...measurements].sort(
     (a, b) => +new Date(a.measuredAt) - +new Date(b.measuredAt)
@@ -143,7 +262,8 @@ export function computeStats(measurements: Measurement[]): WatchStats {
     currentOffset: last ? last.offsetSeconds : null,
     lastMeasuredAt: last ? last.measuredAt : null,
     todayRate: null, avgSpd: null, medianSpd: null, maxGain: null, maxLoss: null,
-    stdDev: null, variance: null, weeklyVariance: null, monthlyVariance: null,
+    stdDev: null, variance: null, adjustedStdDev: null, adjustedVariance: null,
+    conditions: null, weeklyVariance: null, monthlyVariance: null,
     rolling7: null, rolling30: null, driftTrend: null, accuracyTrend: null,
     performanceScore: null, stabilityScore: null, consistencyIndex: null,
     confidence95: null, predicted: null, stabilityPct: null, wearRatio: null,
@@ -161,10 +281,14 @@ export function computeStats(measurements: Measurement[]): WatchStats {
   const w7 = samplesInWindow(samples, 7);
   const w30 = samplesInWindow(samples, 30);
 
+  const conditions = analyzeConditions(samples);
+  // Instability is the spread *within* a condition; positional delta is normal.
+  const effectiveSd = conditions?.reliable ? conditions.withinSd : sd;
+
   // Scores. Performance: |avg| of 0 → 100, 30 s/d → 0 (log-ish curve).
   const perf = Math.max(0, Math.min(100, 100 * (1 - Math.log10(1 + Math.abs(avg) * 3) / Math.log10(91))));
-  // Stability: sd of 0 → 100, 10 s/d → 0.
-  const stab = Math.max(0, Math.min(100, 100 * (1 - Math.log10(1 + sd * 2) / Math.log10(21))));
+  // Stability: σ of 0 → 100, 10 s/d → 0 — measured within condition.
+  const stab = Math.max(0, Math.min(100, 100 * (1 - Math.log10(1 + effectiveSd * 2) / Math.log10(21))));
   const within1sd = sd === 0 ? 1 : spds.filter((x) => Math.abs(x - avg) <= sd).length / spds.length;
 
   const se = sd / Math.sqrt(spds.length);
@@ -180,6 +304,9 @@ export function computeStats(measurements: Measurement[]): WatchStats {
     maxLoss: Math.min(...spds),
     stdDev: sd,
     variance: variance(spds),
+    adjustedStdDev: effectiveSd,
+    adjustedVariance: effectiveSd ** 2,
+    conditions,
     weeklyVariance: w7.length >= 2 ? variance(w7.map((s) => s.spd)) : null,
     monthlyVariance: w30.length >= 2 ? variance(w30.map((s) => s.spd)) : null,
     rolling7: w7.length ? mean(w7.map((s) => s.spd)) : null,
@@ -197,7 +324,7 @@ export function computeStats(measurements: Measurement[]): WatchStats {
       d90: off + rate * 90,
     },
     stabilityPct: within1sd * 100,
-    wearRatio: samples.filter((s) => s.wornToday).length / samples.length,
+    wearRatio: samples.filter((s) => s.worn).length / samples.length,
     samples,
   };
 }
@@ -255,23 +382,50 @@ export function groupByPeriod(
     });
 }
 
-/** Detect whether the recent window drifted outside historical behavior. */
+/**
+ * Detect whether the recent window drifted outside historical behaviour.
+ *
+ * Compares condition-adjusted residuals, so a week spent resting crown-down
+ * (which legitimately runs at a different rate) does not register as drift.
+ * Only a change relative to how the watch normally behaves *in that same
+ * condition* counts. Requires a real evidence base before firing.
+ */
 export function detectAnomaly(samples: RateSample[]): {
   drifting: boolean;
   zScore: number;
   recentAvg: number;
   baselineAvg: number;
+  conditionAdjusted: boolean;
 } | null {
   if (samples.length < 14) return null;
   const recent = samplesInWindow(samples, 7);
   const endRecent = +new Date(samples[samples.length - 1].date) - 7 * DAY_MS;
   const baseline = samples.filter((s) => +new Date(s.date) <= endRecent);
   if (recent.length < 3 || baseline.length < 7) return null;
-  const bAvg = mean(baseline.map((s) => s.spd));
-  const bSd = stdDev(baseline.map((s) => s.spd));
-  const rAvg = mean(recent.map((s) => s.spd));
-  const z = bSd === 0 ? 0 : (rAvg - bAvg) / bSd;
-  return { drifting: Math.abs(z) > 1.5, zScore: z, recentAvg: rAvg, baselineAvg: bAvg };
+
+  const cond = analyzeConditions(samples);
+  const adjusted = !!cond?.reliable;
+
+  // Work on residuals when conditions are known, raw rates otherwise.
+  const valueOf = (() => {
+    if (!adjusted) return (s: RateSample) => s.spd;
+    const byDate = new Map(cond!.residuals.map((r) => [r.date, r.value]));
+    return (s: RateSample) => byDate.get(s.date) ?? s.spd;
+  })();
+
+  const bVals = baseline.map(valueOf);
+  const rVals = recent.map(valueOf);
+  const bSd = stdDev(bVals);
+  const z = bSd === 0 ? 0 : (mean(rVals) - mean(bVals)) / bSd;
+
+  // Report raw rates — they are what the user recognises — but judge on residuals.
+  return {
+    drifting: Math.abs(z) > 2,
+    zScore: z,
+    recentAvg: mean(recent.map((s) => s.spd)),
+    baselineAvg: mean(baseline.map((s) => s.spd)),
+    conditionAdjusted: adjusted,
+  };
 }
 
 export const fmtSpd = (v: number | null | undefined, digits = 1): string =>

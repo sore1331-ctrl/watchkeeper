@@ -56,7 +56,7 @@ export interface SeriesPoint {
 
 /** Daily rate line with optional rolling average overlay + brush zoom. */
 export function RateChart({
-  data, color, showRolling = true, height = 260, coscBand = false, zoom = true,
+  data, color, showRolling = true, height = 260, coscBand = false, zoom = true, spec,
 }: {
   data: SeriesPoint[];
   color: string;
@@ -64,15 +64,22 @@ export function RateChart({
   height?: number;
   coscBand?: boolean;
   zoom?: boolean;
+  /** manufacturer tolerance band, shaded behind the series */
+  spec?: { min: number; max: number } | null;
 }) {
+  const band = spec ?? (coscBand ? { min: -4, max: 6 } : null);
   return (
     <ResponsiveContainer width="100%" height={height}>
       <ComposedChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: -18 }}>
         <CartesianGrid stroke={GRID} vertical={false} />
         <XAxis dataKey="date" tickFormatter={fmtDay} {...AXIS} minTickGap={40} />
         <YAxis {...AXIS} width={46} tickFormatter={(v: number) => `${v > 0 ? "+" : ""}${v}`} />
-        {coscBand && (
-          <ReferenceArea y1={-4} y2={6} fill="var(--positive)" fillOpacity={0.06} />
+        {band && (
+          <ReferenceArea
+            y1={band.min} y2={band.max}
+            fill="var(--positive)" fillOpacity={0.07}
+            stroke="var(--positive)" strokeOpacity={0.25} strokeDasharray="3 3"
+          />
         )}
         <ReferenceLine y={0} stroke="var(--faint)" strokeDasharray="4 4" />
         <Tooltip content={<ChartTip labelFormatter={(l) => fmtDay(String(l))} />} />

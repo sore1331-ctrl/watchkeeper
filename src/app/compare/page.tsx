@@ -5,7 +5,7 @@
 import React, { useMemo, useState } from "react";
 import { useStore } from "@/lib/store";
 import { computeStats, fmtSpd, isoWeekKey, rollingAverage } from "@/lib/stats";
-import { accuracyGrade, healthScore } from "@/lib/grades";
+import { accuracyGrade, healthScore, rateSpecFor } from "@/lib/grades";
 import { CompareChart, type SeriesPoint } from "@/components/charts";
 import { ChartCard, GradeBadge, HealthBadge } from "@/components/widgets";
 import { Card, Skeleton } from "@/components/ui";
@@ -27,7 +27,10 @@ export default function ComparePage() {
           return {
             watch: w, stats,
             health: healthScore(w, stats, servicesFor(w.id)),
-            grade: accuracyGrade(stats.avgSpd, w.movementType, w.coscCertified, stats.count),
+            spec: rateSpecFor(w),
+            grade: accuracyGrade(
+              stats.avgSpd, w.movementType, w.coscCertified, stats.count, rateSpecFor(w)
+            ),
             services: servicesFor(w.id),
           };
         }),
@@ -93,7 +96,9 @@ export default function ComparePage() {
     { label: "Weekly variance", get: (r) => r.stats.weeklyVariance?.toFixed(2) ?? "—" },
     { label: "Monthly variance", get: (r) => r.stats.monthlyVariance?.toFixed(2) ?? "—" },
     { label: "Consistency", get: (r) => (r.stats.consistencyIndex != null ? `${r.stats.consistencyIndex}%` : "—") },
-    { label: "Grade", get: (r) => <GradeBadge grade={r.grade} movement={r.watch.movementType} count={r.stats.count} /> },
+    { label: "Grade", get: (r) => <GradeBadge grade={r.grade} movement={r.watch.movementType} count={r.stats.count} spec={r.spec} avgSpd={r.stats.avgSpd} /> },
+    { label: "Rate spec", get: (r) => (r.spec ? `${r.spec.min > 0 ? "+" : ""}${r.spec.min} / ${r.spec.max > 0 ? "+" : ""}${r.spec.max} s/d` : "—") },
+    { label: "Within spec", get: (r) => (r.spec && r.stats.avgSpd != null ? (r.stats.avgSpd >= r.spec.min && r.stats.avgSpd <= r.spec.max ? "Yes" : "No") : "—") },
     { label: "Health", get: (r) => <HealthBadge label={r.health?.label ?? null} count={r.stats.count} /> },
     { label: "Movement", get: (r) => <span className="capitalize">{r.watch.movementType}</span> },
     { label: "Caliber", get: (r) => r.watch.caliber ?? "—" },

@@ -9,9 +9,10 @@ import { cn } from "@/lib/utils";
 import { Badge, Card, InfoTip } from "./ui";
 import {
   GRADE_COLORS, HEALTH_COLORS, MIN_MEASUREMENTS_FOR_GRADE,
-  gradeExplanation, healthExplanation,
+  gradeExplanation, healthExplanation, type RateSpec,
 } from "@/lib/grades";
 import type { AccuracyGrade, HealthLabel, MovementType } from "@/lib/types";
+import type { ConditionAnalysis } from "@/lib/stats";
 
 export function StatCard({
   label, value, sub, trend, delay = 0, accent, className,
@@ -108,13 +109,16 @@ export function PendingBadge({ count, explain = true }: { count: number; explain
 }
 
 export function GradeBadge({
-  grade, movement = "automatic", count, explain = true,
+  grade, movement = "automatic", count, explain = true, spec, avgSpd,
 }: {
   grade: AccuracyGrade | null;
   movement?: MovementType;
   /** measurements recorded; enables the "collecting data" state */
   count?: number;
   explain?: boolean;
+  /** manufacturer tolerance the grade was judged against */
+  spec?: RateSpec | null;
+  avgSpd?: number | null;
 }) {
   if (!grade) {
     if (count != null && count < MIN_MEASUREMENTS_FOR_GRADE)
@@ -130,7 +134,7 @@ export function GradeBadge({
           <p className="font-semibold" style={{ color: GRADE_COLORS[grade] }}>
             {grade === "COSC" ? "COSC — chronometer spec" : `${grade} accuracy`}
           </p>
-          <p className="mt-1 text-muted">{gradeExplanation(grade, movement)}</p>
+          <p className="mt-1 text-muted">{gradeExplanation(grade, movement, spec, avgSpd)}</p>
         </>
       }
     >
@@ -199,6 +203,91 @@ export function ChartCard({
       </div>
       {children}
     </Card>
+  );
+}
+
+/**
+ * Rate per wearing condition. Makes the watch's positional behaviour visible
+ * and explains why the spread between positions is not counted as instability.
+ */
+export function ConditionBreakdown({
+  conditions, color, spec,
+}: {
+  conditions: ConditionAnalysis | null;
+  color: string;
+  spec?: { min: number; max: number; source: string } | null;
+}) {
+  if (!conditions || conditions.groups.length === 0)
+    return (
+      <p className="py-6 text-center text-xs text-muted">
+        Record the position the watch rests in (or that you wore it) with each
+        measurement to see how its rate changes by position.
+      </p>
+    );
+
+  const shown = conditions.groups.filter((g) => g.n >= 2);
+  if (!shown.length)
+    return (
+      <p className="py-6 text-center text-xs text-muted">
+        Not enough repeats of any one position yet — a couple more measurements
+        in the same position will unlock this.
+      </p>
+    );
+
+  const lo = Math.min(...shown.map((g) => g.mean - g.sd));
+  const hi = Math.max(...shown.map((g) => g.mean + g.sd));
+  const span = hi - lo || 1;
+  const pos = (v: number) => ((v - lo) / span) * 100;
+
+  return (
+    <div className="space-y-3">
+      {shown.map((g) => (
+        <div key={g.key} className="flex items-center gap-3">
+          <span className="w-20 shrink-0 text-xs text-muted">{g.label}</span>
+          <div className="relative h-5 flex-1">
+            {/* in-spec zone */}
+            {spec && (
+              <span
+                className="absolute inset-y-1.5 rounded-sm bg-positive/10"
+                style={{
+                  left: `${Math.max(0, pos(spec.min))}%`,
+                  width: `${Math.max(0, Math.min(100, pos(spec.max)) - Math.max(0, pos(spec.min)))}%`,
+                }}
+              />
+            )}
+            {/* ±1σ range within this position */}
+            <span
+              className="absolute top-2 h-1 rounded-full opacity-40"
+              style={{
+                background: color,
+                left: `${pos(g.mean - g.sd)}%`,
+                width: `${(2 * g.sd / span) * 100}%`,
+              }}
+            />
+            {/* mean marker */}
+            <span
+              className="absolute top-0.5 h-4 w-1 -translate-x-1/2 rounded-full"
+              style={{ background: color, left: `${pos(g.mean)}%` }}
+            />
+          </div>
+          <span className="w-16 shrink-0 text-right text-xs font-semibold tabular-nums">
+            {g.mean > 0 ? "+" : ""}{g.mean.toFixed(1)}
+          </span>
+          <span className="w-8 shrink-0 text-right text-[10px] text-faint">n={g.n}</span>
+        </div>
+      ))}
+      <p className="pt-1 text-xs text-muted">
+        Spread between positions is{" "}
+        <span className="font-semibold text-foreground">
+          {conditions.betweenSpread.toFixed(1)} s/d
+        </span>{" "}
+        — normal mechanical behaviour, not instability, so it is excluded from the
+        stability score. Within a single position the watch varies by ±
+        {conditions.withinSd.toFixed(1)} s/d.
+        {conditions.explained > 0.25 &&
+          ` Position alone explains ${Math.round(conditions.explained * 100)}% of the total variance.`}
+      </p>
+    </div>
   );
 }
 

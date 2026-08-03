@@ -1,8 +1,8 @@
 // ─── Smart insights + notification engine ───────────────────────────────────
 
 import type { Insight, Measurement, Notification, Watch, ServiceRecord } from "./types";
-import { computeStats, detectAnomaly, mean, stdDev, type WatchStats } from "./stats";
-import { accuracyGrade, batteryRemaining, daysSince, healthScore, lastRegulationDate, MIN_MEASUREMENTS_FOR_GRADE, nextServiceEstimate } from "./grades";
+import { analyzeConditions, computeStats, detectAnomaly, mean, stdDev, type WatchStats } from "./stats";
+import { accuracyGrade, batteryRemaining, daysSince, healthScore, lastRegulationDate, MIN_MEASUREMENTS_FOR_GRADE, nextServiceEstimate, rateSpecFor } from "./grades";
 
 const DAY_MS = 86_400_000;
 let seq = 0;
@@ -44,21 +44,27 @@ export function generateInsights(
     (s) => +new Date(s.date) <= end - 30 * DAY_MS && +new Date(s.date) > end - 60 * DAY_MS
   );
   if (rec.length >= 5 && prev.length >= 5) {
-    const sdRec = stdDev(rec.map((s) => s.spd));
-    const sdPrev = stdDev(prev.map((s) => s.spd));
-    if (sdPrev > 0.2) {
+    // Compare like-for-like: σ of condition-adjusted residuals, so a month
+    // spent resting in a different position isn't reported as instability.
+    const cond = analyzeConditions(stats.samples);
+    const resid = cond?.reliable ? new Map(cond.residuals.map((r) => [r.date, r.value])) : null;
+    const val = (s: { date: string; spd: number }) => resid?.get(s.date) ?? s.spd;
+    const sdRec = stdDev(rec.map(val));
+    const sdPrev = stdDev(prev.map(val));
+    const basis = resid ? " (positional effects excluded)" : "";
+    if (sdPrev > 0.5) {
       const change = (sdRec - sdPrev) / sdPrev;
-      if (change > 0.2)
+      if (change > 0.35)
         out.push({
-          id: nid(), watchId: watch.id, kind: "stability", severity: change > 0.5 ? "critical" : "warning",
+          id: nid(), watchId: watch.id, kind: "stability", severity: change > 0.75 ? "warning" : "neutral",
           text: `${name} has become ${Math.round(change * 100)}% less stable over the last month.`,
-          detail: `Rate σ rose from ±${sdPrev.toFixed(1)} to ±${sdRec.toFixed(1)} s/d.`,
+          detail: `Rate σ rose from ±${sdPrev.toFixed(1)} to ±${sdRec.toFixed(1)} s/d${basis}.`,
         });
-      else if (change < -0.2)
+      else if (change < -0.35)
         out.push({
           id: nid(), watchId: watch.id, kind: "stability", severity: "positive",
           text: `${name} is ${Math.round(-change * 100)}% more stable than last month.`,
-          detail: `Rate σ improved from ±${sdPrev.toFixed(1)} to ±${sdRec.toFixed(1)} s/d.`,
+          detail: `Rate σ improved from ±${sdPrev.toFixed(1)} to ±${sdRec.toFixed(1)} s/d${basis}.`,
         });
     }
     const avgRec = mean(rec.map((s) => s.spd));
@@ -71,8 +77,10 @@ export function generateInsights(
       });
   }
 
-  // COSC check
-  if (watch.coscCertified && stats.avgSpd != null) {
+  // COSC check — skipped when a tighter manufacturer spec is reported below,
+  // which would otherwise say the same thing twice.
+  const coscOnly = !rateSpecFor(watch) || rateSpecFor(watch)!.source === "COSC chronometer";
+  if (watch.coscCertified && coscOnly && stats.avgSpd != null) {
     const inCosc = stats.avgSpd >= -4 && stats.avgSpd <= 6;
     out.push({
       id: nid(), watchId: watch.id, kind: "certification",
@@ -83,14 +91,39 @@ export function generateInsights(
     });
   }
 
-  // Regulation recommendation
-  if (watch.movementType !== "quartz" && stats.avgSpd != null && Math.abs(stats.avgSpd) > 8) {
-    const months = Math.abs(stats.avgSpd) > 15 ? 1 : 3;
-    out.push({
-      id: nid(), watchId: watch.id, kind: "recommendation",
-      severity: months === 1 ? "critical" : "warning",
-      text: `Recommend regulation within ${months} month${months > 1 ? "s" : ""} — average rate is ${stats.avgSpd > 0 ? "+" : ""}${stats.avgSpd.toFixed(1)} s/d.`,
-    });
+  // Regulation recommendation — judged against the movement's own tolerance.
+  // A watch inside its manufacturer spec does not need regulating, however
+  // far from zero it runs.
+  const spec = rateSpecFor(watch);
+  if (watch.movementType !== "quartz" && stats.avgSpd != null) {
+    const rate = stats.avgSpd;
+    const fmt = `${rate > 0 ? "+" : ""}${rate.toFixed(1)} s/d`;
+    if (spec) {
+      const half = (spec.max - spec.min) / 2 || 1;
+      const centre = (spec.min + spec.max) / 2;
+      const d = (rate - centre) / half;
+      if (Math.abs(d) > 1) {
+        const months = Math.abs(d) > 2 ? 1 : 3;
+        out.push({
+          id: nid(), watchId: watch.id, kind: "recommendation",
+          severity: Math.abs(d) > 2 ? "warning" : "neutral",
+          text: `${name} is running outside its ${spec.min > 0 ? "+" : ""}${spec.min}/${spec.max > 0 ? "+" : ""}${spec.max} s/d specification at ${fmt} — regulation would bring it back in band.`,
+          detail: `Suggested within ${months} month${months > 1 ? "s" : ""}. Source: ${spec.source}.`,
+        });
+      } else {
+        out.push({
+          id: nid(), watchId: watch.id, kind: "certification", severity: "positive",
+          text: `${name} is running within its ${spec.min > 0 ? "+" : ""}${spec.min}/${spec.max > 0 ? "+" : ""}${spec.max} s/d specification at ${fmt}.`,
+          detail: `No regulation needed — this is how the movement is built to perform (${spec.source}).`,
+        });
+      }
+    } else if (Math.abs(rate) > 20) {
+      out.push({
+        id: nid(), watchId: watch.id, kind: "recommendation", severity: "neutral",
+        text: `${name} averages ${fmt}. If that is outside its caliber's tolerance, regulation would help.`,
+        detail: "No published spec is known for this caliber — set one in the watch profile for an accurate verdict.",
+      });
+    }
   }
 
   // Position analysis
@@ -147,13 +180,16 @@ export function generateInsights(
       });
   }
 
-  // Anomaly detection
+  // Anomaly detection — on condition-adjusted residuals where possible
   const anomaly = detectAnomaly(stats.samples);
   if (anomaly?.drifting)
     out.push({
       id: nid(), watchId: watch.id, kind: "trend",
-      severity: Math.abs(anomaly.zScore) > 2.5 ? "critical" : "warning",
-      text: `${name} is drifting outside its normal behavior — recent rate ${anomaly.recentAvg > 0 ? "+" : ""}${anomaly.recentAvg.toFixed(1)} s/d vs baseline ${anomaly.baselineAvg > 0 ? "+" : ""}${anomaly.baselineAvg.toFixed(1)} s/d (z=${anomaly.zScore.toFixed(1)}).`,
+      severity: Math.abs(anomaly.zScore) > 3 ? "warning" : "neutral",
+      text: `${name} is running differently than usual — recent rate ${anomaly.recentAvg > 0 ? "+" : ""}${anomaly.recentAvg.toFixed(1)} s/d vs baseline ${anomaly.baselineAvg > 0 ? "+" : ""}${anomaly.baselineAvg.toFixed(1)} s/d.`,
+      detail: anomaly.conditionAdjusted
+        ? `Compared within the same wearing positions, so this is not just a change of resting position (z=${anomaly.zScore.toFixed(1)}).`
+        : `Positions aren't recorded consistently enough to rule out a change of resting position (z=${anomaly.zScore.toFixed(1)}).`,
     });
 
   return out;
@@ -184,17 +220,25 @@ export function generateNotifications(
         body: `${name} hasn't been measured in ${lastDays} days.`,
       });
 
-    const anomaly = detectAnomaly(stats.samples);
-    if (anomaly?.drifting)
+    // Only warn once there is a real evidence base, and only when the shift
+    // survives adjusting for the positions the watch was kept in.
+    const anomaly = stats.count >= MIN_MEASUREMENTS_FOR_GRADE ? detectAnomaly(stats.samples) : null;
+    if (anomaly?.drifting && anomaly.conditionAdjusted)
       push({
-        watchId: w.id, kind: "trend-change", severity: Math.abs(anomaly.zScore) > 2.5 ? "critical" : "warning",
-        title: "Trend change detected",
-        body: `${name}'s rate shifted to ${anomaly.recentAvg > 0 ? "+" : ""}${anomaly.recentAvg.toFixed(1)} s/d (baseline ${anomaly.baselineAvg > 0 ? "+" : ""}${anomaly.baselineAvg.toFixed(1)}).`,
+        watchId: w.id, kind: "trend-change",
+        severity: Math.abs(anomaly.zScore) > 3 ? "warning" : "info",
+        title: "Rate has shifted",
+        body: `${name} is averaging ${anomaly.recentAvg > 0 ? "+" : ""}${anomaly.recentAvg.toFixed(1)} s/d against a baseline of ${anomaly.baselineAvg > 0 ? "+" : ""}${anomaly.baselineAvg.toFixed(1)} — beyond its usual positional variation.`,
       });
 
-    if (stats.weeklyVariance != null && stats.monthlyVariance != null && stats.weeklyVariance > stats.monthlyVariance * 2 && stats.weeklyVariance > 2)
+    if (
+      stats.count >= MIN_MEASUREMENTS_FOR_GRADE &&
+      stats.conditions?.reliable &&
+      stats.weeklyVariance != null && stats.monthlyVariance != null &&
+      stats.weeklyVariance > stats.monthlyVariance * 3 && stats.weeklyVariance > 4
+    )
       push({
-        watchId: w.id, kind: "variance-increase", severity: "warning",
+        watchId: w.id, kind: "variance-increase", severity: "info",
         title: "Variance increasing",
         body: `${name}'s weekly variance (${stats.weeklyVariance.toFixed(1)}) is well above its monthly norm (${stats.monthlyVariance.toFixed(1)}).`,
       });

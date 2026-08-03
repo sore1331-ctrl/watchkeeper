@@ -2,6 +2,9 @@
 
 import type { AccuracyGrade, HealthLabel, MovementType, ServiceRecord, Watch } from "./types";
 import type { WatchStats } from "./stats";
+import { specForCaliber, type RateSpec } from "./watch-catalog";
+
+export type { RateSpec };
 
 const DAY_MS = 86_400_000;
 
@@ -12,15 +15,56 @@ const DAY_MS = 86_400_000;
  */
 export const MIN_MEASUREMENTS_FOR_GRADE = 7;
 
+/**
+ * The tolerance a watch is judged against: an explicit override on the watch,
+ * otherwise its caliber's published spec, otherwise none (generic scale).
+ */
+export function rateSpecFor(watch: Watch): RateSpec | null {
+  if (watch.rateSpecMin != null && watch.rateSpecMax != null)
+    return {
+      min: watch.rateSpecMin,
+      max: watch.rateSpecMax,
+      source: watch.rateSpecSource ?? "Custom specification",
+    };
+  return specForCaliber(watch.caliber, watch.coscCertified);
+}
+
+/**
+ * Grade against the movement's own specification when it is known.
+ *
+ * `d` is where the average rate sits in the tolerance band: 0 at the centre,
+ * ±1 at the edges. A Seiko 4R34 (−35/+45) running −28 s/d lands at d ≈ −0.83 —
+ * inside spec, so "Good", not "Critical". The same rate on a Rolex 3235
+ * (−2/+2) lands at d = −14 and is correctly Critical.
+ */
+export function gradeAgainstSpec(avgSpd: number, spec: RateSpec): AccuracyGrade {
+  const centre = (spec.min + spec.max) / 2;
+  const half = (spec.max - spec.min) / 2 || 1;
+  const d = Math.abs((avgSpd - centre) / half);
+  if (d <= 0.34) return "Excellent";
+  if (d <= 0.67) return "Very Good";
+  if (d <= 1) return "Good";
+  if (d <= 1.5) return "Fair";
+  if (d <= 2.5) return "Poor";
+  return "Critical";
+}
+
 export function accuracyGrade(
   avgSpd: number | null,
   movement: MovementType,
   cosc: boolean,
   /** total measurements; when supplied, grading waits for the minimum */
-  measurementCount?: number
+  measurementCount?: number,
+  /** manufacturer tolerance; when known the grade is judged against it */
+  spec?: RateSpec | null
 ): AccuracyGrade | null {
   if (avgSpd == null) return null;
   if (measurementCount != null && measurementCount < MIN_MEASUREMENTS_FOR_GRADE) return null;
+
+  // A certified chronometer inside its band earns the COSC badge outright.
+  if (cosc && avgSpd >= -4 && avgSpd <= 6) return "COSC";
+  if (spec) return gradeAgainstSpec(avgSpd, spec);
+
   const a = Math.abs(avgSpd);
   if (movement === "quartz") {
     if (a <= 0.1) return "Excellent";
@@ -30,13 +74,14 @@ export function accuracyGrade(
     if (a <= 3) return "Poor";
     return "Critical";
   }
-  // Mechanical. COSC: -4/+6 s/d
-  if (cosc && avgSpd >= -4 && avgSpd <= 6) return "COSC";
+  // Generic mechanical scale — only used when no spec is known for the
+  // caliber. Deliberately lenient at the bottom: plenty of honest movements
+  // are built to ±30 s/d and are not "critical" at ±25.
   if (a <= 3) return "Excellent";
   if (a <= 6) return "Very Good";
-  if (a <= 10) return "Good";
-  if (a <= 15) return "Fair";
-  if (a <= 25) return "Poor";
+  if (a <= 12) return "Good";
+  if (a <= 20) return "Fair";
+  if (a <= 40) return "Poor";
   return "Critical";
 }
 
@@ -71,11 +116,41 @@ const GRADE_MEANING: Record<AccuracyGrade, string> = {
   Critical: "Far outside spec — often a sign of magnetization, a fault, or an overdue service.",
 };
 
-/** Plain-language explanation of an accuracy grade for the given movement. */
-export function gradeExplanation(grade: AccuracyGrade, movement: MovementType): string {
+const fmtBand = (s: RateSpec) =>
+  `${s.min > 0 ? "+" : ""}${s.min} to ${s.max > 0 ? "+" : ""}${s.max} s/d`;
+
+/**
+ * Plain-language explanation of an accuracy grade. When the movement's own
+ * tolerance is known the explanation is stated in those terms — that is the
+ * standard the watch was actually built to.
+ */
+export function gradeExplanation(
+  grade: AccuracyGrade,
+  movement: MovementType,
+  spec?: RateSpec | null,
+  avgSpd?: number | null
+): string {
+  if (grade === "COSC")
+    return `Running inside chronometer specification (−4 to +6 s/d) — the standard a certified movement is tested to.`;
+
+  if (spec) {
+    const inSpec = avgSpd != null && avgSpd >= spec.min && avgSpd <= spec.max;
+    const where =
+      avgSpd == null
+        ? ""
+        : inSpec
+          ? ` At ${avgSpd > 0 ? "+" : ""}${avgSpd.toFixed(1)} s/d it is running within that tolerance.`
+          : ` At ${avgSpd > 0 ? "+" : ""}${avgSpd.toFixed(1)} s/d it is outside that tolerance.`;
+    const verdict = inSpec
+      ? grade === "Excellent" || grade === "Very Good"
+        ? "Comfortably inside spec, with margin on both sides."
+        : "Within spec — performing as the manufacturer intends, even if not centred."
+      : GRADE_MEANING[grade];
+    return `Judged against ${spec.source}: ${fmtBand(spec)}.${where} ${verdict}`;
+  }
+
   const band = movement === "quartz" ? GRADE_BANDS[grade].quartz : GRADE_BANDS[grade].mech;
-  const prefix = grade === "COSC" ? band : `Average rate ${band}`;
-  return `${prefix}. ${GRADE_MEANING[grade]}`;
+  return `No published tolerance for this caliber, so a generic scale is used: ${band}. ${GRADE_MEANING[grade]} You can set the movement's real spec in the watch profile.`;
 }
 
 export function lastServiceDate(services: ServiceRecord[]): string | null {
@@ -113,7 +188,19 @@ export function healthScore(
   if (stats.avgSpd == null) return null;
   if (stats.count < MIN_MEASUREMENTS_FOR_GRADE) return null;
 
-  const perf = stats.performanceScore ?? 50;
+  // Accuracy is scored against the movement's own tolerance when known: a
+  // 4R34 at −28 s/d is in spec and should not be marked down like a chronometer
+  // would be. Without a spec, fall back to the absolute performance curve.
+  const spec = rateSpecFor(watch);
+  const perf = spec
+    ? (() => {
+        const centre = (spec.min + spec.max) / 2;
+        const half = (spec.max - spec.min) / 2 || 1;
+        const d = Math.abs((stats.avgSpd! - centre) / half);
+        // centred → 100, at the band edge → 70, well outside → approaches 0
+        return Math.max(0, Math.min(100, d <= 1 ? 100 - 30 * d : Math.max(0, 70 - 40 * (d - 1))));
+      })()
+    : (stats.performanceScore ?? 50);
   const stab = stats.stabilityScore ?? 50;
   const cons = stats.consistencyIndex ?? 50;
 
@@ -149,12 +236,23 @@ export function healthScore(
       components.reduce((a, c) => a + c.weight, 0)
   );
 
+  // The label names an action, so it has to match the actual fault:
+  //   • regulation adjusts the RATE — pointless if the rate is already in spec
+  //   • service addresses instability — scatter within one position
+  // A watch that simply runs off-centre but inside tolerance needs neither.
+  const rateOutOfSpec = spec
+    ? stats.avgSpd < spec.min || stats.avgSpd > spec.max
+    : Math.abs(stats.avgSpd) > 20;
+  // Instability is only actionable once there is enough history to trust it.
+  const unstable = stats.count >= 14 && stab < 40;
+
   let label: HealthLabel;
-  if (score >= 85) label = "Excellent";
+  if (rateOutOfSpec && unstable) label = "Needs Service";
+  else if (rateOutOfSpec) label = "Needs Regulation";
+  else if (unstable) label = "Needs Service";
+  else if (score >= 85) label = "Excellent";
   else if (score >= 70) label = "Very Good";
-  else if (score >= 55) label = "Good";
-  else if (score >= 40) label = "Needs Regulation";
-  else label = "Needs Service";
+  else label = "Good";
 
   return { score, label, components };
 }
@@ -167,27 +265,20 @@ export const HEALTH_COLORS: Record<HealthLabel, string> = {
   "Needs Service": "#f87171",
 };
 
-const HEALTH_BANDS: Record<HealthLabel, string> = {
-  Excellent: "85–100",
-  "Very Good": "70–84",
-  Good: "55–69",
-  "Needs Regulation": "40–54",
-  "Needs Service": "below 40",
-};
-
 const HEALTH_MEANING: Record<HealthLabel, string> = {
   Excellent: "Accurate, consistent and holding its rate. Nothing needs attention.",
   "Very Good": "Performing well. Keep measuring at your usual cadence.",
-  Good: "Healthy overall, though accuracy or consistency has room to improve.",
+  Good:
+    "Running within tolerance. The score reflects how far from the centre of spec it sits and how consistent it is — a lower number here is not a fault.",
   "Needs Regulation":
-    "The movement runs reliably but off-rate. A watchmaker can adjust the rate without a full service.",
+    "The rate is outside the movement's tolerance. A watchmaker can adjust it without a full service — this is a rate problem, not a fault.",
   "Needs Service":
-    "Several indicators are weak at once — rate, stability, or time since the last service. Worth having it looked at.",
+    "The rate scatters more than it should within a single position, which regulation cannot fix. Worth having the movement looked at.",
 };
 
 /** Plain-language explanation of a movement health verdict. */
 export function healthExplanation(label: HealthLabel): string {
-  return `Score ${HEALTH_BANDS[label]}. ${HEALTH_MEANING[label]} Combines accuracy, stability, consistency, drift trend, service age and wear pattern.`;
+  return `${HEALTH_MEANING[label]} The score combines accuracy against the movement's own spec, stability within a position, consistency, drift trend, service age and wear pattern.`;
 }
 
 /** Estimate next service date from last major service + interval. */
