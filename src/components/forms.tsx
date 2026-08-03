@@ -192,6 +192,7 @@ export function MeasurementDialog({
     position: "on-wrist" as WatchPosition,
     powerReservePct: "",
     wornToday: true,
+    timeAdjusted: false,
     notes: "",
   }));
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) =>
@@ -243,6 +244,7 @@ export function MeasurementDialog({
       position: form.position,
       powerReservePct: form.powerReservePct ? +form.powerReservePct : undefined,
       wornToday: form.wornToday,
+      timeAdjusted: form.timeAdjusted || undefined,
       notes: form.notes || undefined,
     };
     addMeasurement(m);
@@ -307,11 +309,13 @@ export function MeasurementDialog({
             }}>
               {offset == null ? "—" : `${offset > 0 ? "+" : ""}${offset.toFixed(1)}s`}
             </p>
-            {projectedSpd != null && Math.abs(projectedSpd) < 120 && (
+            {form.timeAdjusted ? (
+              <p className="text-xs text-warning">New baseline — no rate calculated across the correction</p>
+            ) : projectedSpd != null && Math.abs(projectedSpd) < 120 ? (
               <p className="text-xs text-muted">
                 ≈ {projectedSpd > 0 ? "+" : ""}{projectedSpd.toFixed(1)} s/d since last measurement
               </p>
-            )}
+            ) : null}
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -340,6 +344,25 @@ export function MeasurementDialog({
               <span className="text-sm text-muted">Worn today</span>
             </div>
           </div>
+          {/* Time correction — breaks the drift chain so a reset isn't read
+              as an enormous rate. */}
+          <div className={`rounded-xl border p-3 transition-colors ${
+            form.timeAdjusted ? "border-warning/40 bg-warning/5" : "border-border-token"
+          }`}>
+            <div className="flex items-center gap-3">
+              <Switch
+                checked={form.timeAdjusted}
+                onCheckedChange={(v) => set("timeAdjusted", v)}
+              />
+              <span className="text-sm font-medium">I corrected the time since the last reading</span>
+            </div>
+            <p className="mt-1.5 text-[11px] leading-relaxed text-muted">
+              {form.timeAdjusted
+                ? "This reading starts a fresh baseline. The jump caused by your correction won't be counted as drift, and no rate is calculated across it."
+                : "Tick this if you reset the hands, hacked the seconds, or adjusted the watch — otherwise the correction would look like a huge gain or loss."}
+            </p>
+          </div>
+
           <div>
             <Label>Notes</Label>
             <Textarea value={form.notes} onChange={(e) => set("notes", e.target.value)}

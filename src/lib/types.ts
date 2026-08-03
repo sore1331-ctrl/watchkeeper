@@ -66,6 +66,12 @@ export interface Measurement {
   position?: WatchPosition;
   powerReservePct?: number;
   wornToday: boolean;
+  /**
+   * The watch was reset or hand-corrected since the previous measurement.
+   * The offset jump across that gap is the correction, not drift, so no rate
+   * sample is produced for it — otherwise a −60s reset reads as a wild rate.
+   */
+  timeAdjusted?: boolean;
   notes?: string;
   photoUrl?: string;
 }

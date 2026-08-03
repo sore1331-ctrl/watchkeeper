@@ -67,6 +67,8 @@ export interface WatchStats {
   stabilityPct: number | null;
   wearRatio: number | null;
   samples: RateSample[];
+  /** intervals not counted as drift (time corrections, stopped watch) */
+  excluded: ExcludedSample[];
 }
 
 const DAY_MS = 86_400_000;
@@ -105,6 +107,36 @@ export function slope(points: { x: number; y: number }[]): number {
   return den === 0 ? 0 : num / den;
 }
 
+/**
+ * Any implied rate beyond this is not timekeeping — it is a watch that was
+ * reset, stopped, or a mistyped reading. Five minutes a day is already far
+ * past "broken" for any movement.
+ */
+export const IMPLAUSIBLE_SPD = 300;
+
+export interface ExcludedSample {
+  date: string;
+  spd: number;
+  reason: "time-corrected" | "implausible";
+}
+
+/** Intervals that were not counted as drift, with why. */
+export function excludedSamples(measurements: Measurement[]): ExcludedSample[] {
+  const ms = [...measurements].sort(
+    (a, b) => +new Date(a.measuredAt) - +new Date(b.measuredAt)
+  );
+  const out: ExcludedSample[] = [];
+  for (let i = 1; i < ms.length; i++) {
+    const gapMs = +new Date(ms[i].measuredAt) - +new Date(ms[i - 1].measuredAt);
+    if (gapMs < 3_600_000) continue;
+    const spd = (ms[i].offsetSeconds - ms[i - 1].offsetSeconds) / (gapMs / DAY_MS);
+    if (ms[i].timeAdjusted) out.push({ date: ms[i].measuredAt, spd, reason: "time-corrected" });
+    else if (Math.abs(spd) > IMPLAUSIBLE_SPD)
+      out.push({ date: ms[i].measuredAt, spd, reason: "implausible" });
+  }
+  return out;
+}
+
 /** Convert consecutive measurements into normalized seconds/day samples. */
 export function rateSamples(measurements: Measurement[]): RateSample[] {
   const ms = [...measurements].sort(
@@ -116,10 +148,20 @@ export function rateSamples(measurements: Measurement[]): RateSample[] {
     const cur = ms[i];
     const gapMs = +new Date(cur.measuredAt) - +new Date(prev.measuredAt);
     if (gapMs < 3_600_000) continue; // ignore gaps under 1 hour (noise)
+
+    // The watch was corrected across this gap: the offset change is the
+    // correction the user made, not how the movement ran. No rate here.
+    if (cur.timeAdjusted) continue;
+
     const gapDays = gapMs / DAY_MS;
+    const spd = (cur.offsetSeconds - prev.offsetSeconds) / gapDays;
+    // Safety net for history recorded before corrections could be flagged:
+    // a reset or a stopped watch masquerades as an enormous rate.
+    if (Math.abs(spd) > IMPLAUSIBLE_SPD) continue;
+
     out.push({
       date: cur.measuredAt,
-      spd: (cur.offsetSeconds - prev.offsetSeconds) / gapDays,
+      spd,
       offset: cur.offsetSeconds,
       gapHours: gapMs / 3_600_000,
       // conditions during the interval = how the watch was left at its start
@@ -268,6 +310,7 @@ export function computeStats(measurements: Measurement[]): WatchStats {
     performanceScore: null, stabilityScore: null, consistencyIndex: null,
     confidence95: null, predicted: null, stabilityPct: null, wearRatio: null,
     samples,
+    excluded: excludedSamples(measurements),
   };
   if (samples.length === 0) return empty;
 

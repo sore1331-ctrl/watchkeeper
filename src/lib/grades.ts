@@ -2,7 +2,7 @@
 
 import type { AccuracyGrade, HealthLabel, MovementType, ServiceRecord, Watch } from "./types";
 import type { WatchStats } from "./stats";
-import { specForCaliber, type RateSpec } from "./watch-catalog";
+import { modelsForBrand, specForCaliber, type RateSpec } from "./watch-catalog";
 
 export type { RateSpec };
 
@@ -26,7 +26,26 @@ export function rateSpecFor(watch: Watch): RateSpec | null {
       max: watch.rateSpecMax,
       source: watch.rateSpecSource ?? "Custom specification",
     };
-  return specForCaliber(watch.caliber, watch.coscCertified);
+
+  const byCaliber = specForCaliber(watch.caliber, watch.coscCertified);
+  if (byCaliber) return byCaliber;
+
+  // No caliber recorded — look the model up in the catalog and use its
+  // caliber. Someone who typed "Seiko SSK001" without filling in "4R34"
+  // should still be graded against the 4R34's tolerance.
+  const known = modelsForBrand(watch.brand).find((m) => {
+    const q = watch.model.trim().toLowerCase();
+    const mm = m.model.toLowerCase();
+    return (
+      mm === q ||
+      mm.includes(q) ||
+      q.includes(mm) ||
+      (!!m.reference && m.reference.toLowerCase() === q)
+    );
+  });
+  if (known?.caliber) return specForCaliber(known.caliber, watch.coscCertified);
+
+  return specForCaliber(undefined, watch.coscCertified);
 }
 
 /**
@@ -276,9 +295,23 @@ const HEALTH_MEANING: Record<HealthLabel, string> = {
     "The rate scatters more than it should within a single position, which regulation cannot fix. Worth having the movement looked at.",
 };
 
-/** Plain-language explanation of a movement health verdict. */
-export function healthExplanation(label: HealthLabel): string {
-  return `${HEALTH_MEANING[label]} The score combines accuracy against the movement's own spec, stability within a position, consistency, drift trend, service age and wear pattern.`;
+/**
+ * Plain-language explanation of a movement health verdict. Without a known
+ * tolerance the verdict must not claim the rate is "outside spec" — there is
+ * no spec to be outside of, only a generic assumption.
+ */
+export function healthExplanation(label: HealthLabel, hasSpec = true): string {
+  if (!hasSpec && label === "Needs Regulation")
+    return (
+      "The rate is a long way from zero, but no tolerance is set for this movement — " +
+      "this verdict comes from a generic scale, not your caliber's real spec. " +
+      "Many honest movements are built to ±30 s/d or wider. Add the caliber (or its " +
+      "rate spec) in the watch profile to be graded against the standard it was actually built to."
+    );
+  const tail = hasSpec
+    ? "The score combines accuracy against the movement's own spec, stability within a position, consistency, drift trend, service age and wear pattern."
+    : "No rate spec is set for this movement, so accuracy is scored on a generic scale — add the caliber in the watch profile for an accurate verdict.";
+  return `${HEALTH_MEANING[label]} ${tail}`;
 }
 
 /** Estimate next service date from last major service + interval. */

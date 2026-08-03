@@ -6,11 +6,11 @@ import React, { useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
-  ArrowLeft, Pencil, Plus, ShieldCheck, Trash2, Wrench,
+  ArrowLeft, Info, Pencil, Plus, ShieldCheck, Trash2, Wrench,
 } from "lucide-react";
 import { useStore } from "@/lib/store";
 import {
-  computeStats, detectAnomaly, fmtSec, fmtSpd, groupByPeriod, rollingAverage,
+  computeStats, detectAnomaly, fmtSec, fmtSpd, groupByPeriod, IMPLAUSIBLE_SPD, rollingAverage,
 } from "@/lib/stats";
 import {
   accuracyGrade, batteryRemaining, daysSince, healthExplanation, healthScore,
@@ -83,6 +83,7 @@ export default function WatchDetailPage() {
       ),
       anomaly: detectAnomaly(stats.samples),
       chartData, weekly, monthly, forecast, history, wearByDay, tempData,
+      corrections: ms.filter((m) => m.timeAdjusted).map((m) => m.measuredAt),
     };
   }, [watch, measurementsFor, servicesFor]);
 
@@ -114,10 +115,16 @@ export default function WatchDetailPage() {
             </h1>
             <GradeBadge grade={grade} movement={watch.movementType} count={stats.count}
               spec={spec} avgSpd={stats.avgSpd} />
-            {spec && (
+            {spec ? (
               <Badge color="var(--faint)">
                 spec {spec.min > 0 ? "+" : ""}{spec.min} / {spec.max > 0 ? "+" : ""}{spec.max} s/d
               </Badge>
+            ) : (
+              <WatchDialog existing={watch} trigger={
+                <button className="cursor-pointer">
+                  <Badge color="var(--warning)">no rate spec — graded generically</Badge>
+                </button>
+              } />
             )}
             {watch.coscCertified && (
               <Badge color="#c9a227"><ShieldCheck className="h-3 w-3" /> COSC certified</Badge>
@@ -146,6 +153,25 @@ export default function WatchDetailPage() {
           <MeasurementDialog watchId={watch.id} />
         </div>
       </div>
+
+      {/* Readings deliberately kept out of the rate maths */}
+      {stats.excluded.length > 0 && (
+        <Card className="mb-4 flex items-start gap-3 border-warning/30 p-4">
+          <Info className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+          <div className="text-xs">
+            <p className="font-semibold">
+              {stats.excluded.length} reading{stats.excluded.length === 1 ? "" : "s"} excluded from rate analysis
+            </p>
+            <p className="mt-1 text-muted">
+              {stats.excluded.some((e) => e.reason === "time-corrected") &&
+                "Intervals where you corrected the time are skipped — the jump is your adjustment, not drift. "}
+              {stats.excluded.some((e) => e.reason === "implausible") &&
+                `Some intervals imply an impossible rate (over ${IMPLAUSIBLE_SPD} s/d), which normally means the watch was reset or had stopped. Tick "I corrected the time" when logging those so they're recorded properly. `}
+              Offsets are still plotted in full.
+            </p>
+          </div>
+        </Card>
+      )}
 
       {/* KPIs */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:gap-4">
@@ -200,8 +226,14 @@ export default function WatchDetailPage() {
             >
               <RateChart data={data.chartData} color={watch.accentColor} spec={spec} />
             </ChartCard>
-            <ChartCard title="Offset history" sub="cumulative deviation">
-              <OffsetChart data={data.chartData} color={watch.accentColor} height={260} />
+            <ChartCard
+              title="Offset history"
+              sub={data.corrections.length
+                ? "cumulative deviation — dashed lines mark time corrections"
+                : "cumulative deviation"}
+            >
+              <OffsetChart data={data.chartData} color={watch.accentColor} height={260}
+                corrections={data.corrections} />
             </ChartCard>
           </div>
           <div className="grid gap-4 lg:grid-cols-2">
@@ -253,7 +285,7 @@ export default function WatchDetailPage() {
                   {health.components.map((c) => (
                     <ScoreBar key={c.name} name={c.name} score={c.score} weight={c.weight} />
                   ))}
-                  <p className="pt-1 text-xs text-muted">{healthExplanation(health.label)}</p>
+                  <p className="pt-1 text-xs text-muted">{healthExplanation(health.label, !!spec)}</p>
                 </div>
               </div>
             </Card>

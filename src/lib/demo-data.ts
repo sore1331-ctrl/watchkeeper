@@ -213,6 +213,10 @@ export function generateDemoMeasurements(now = new Date()): Measurement[] {
       );
     };
 
+    // The fast-running Seiko gets reset partway through, the way anyone would
+    // once it is a minute out — exercises the time-correction handling.
+    const resetAt = watch.id === "w-seiko" ? Math.floor(points.length * 0.55) : -1;
+
     let offset = (r() - 0.5) * 4;
     points.forEach((pt, i) => {
       if (i > 0) {
@@ -220,6 +224,7 @@ export function generateDemoMeasurements(now = new Date()): Measurement[] {
         const gapDays = (+pt.date - +prev.date) / 86_400_000;
         offset += rateAt(prev) * gapDays;
       }
+      if (i === resetAt) offset = (r() - 0.5) * 2; // hands set back to reference
       const wt = new Date(+pt.date + Math.round(offset * 1000));
       out.push({
         id: `${watch.id}-m${i}`,
@@ -232,7 +237,9 @@ export function generateDemoMeasurements(now = new Date()): Measurement[] {
         position: pt.position,
         powerReservePct: pt.powerReserve,
         wornToday: pt.worn,
+        timeAdjusted: i === resetAt || undefined,
         notes:
+          i === resetAt ? "Was over a minute fast — reset the hands to reference." :
           i % 23 === 0 && i > 0 ? "Synced against NTP pool before measuring." :
           i % 17 === 0 && i > 0 ? "Left on winder overnight." : undefined,
       });

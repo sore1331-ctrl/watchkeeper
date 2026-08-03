@@ -29,13 +29,14 @@ function downloadFile(name: string, mime: string, content: string) {
 export function exportMeasurementsCsv(watch: Watch, ms: Measurement[]) {
   const samples = rateSamples(ms);
   const spdByDate = new Map(samples.map((s) => [s.date, s.spd]));
-  const header = "date,reference_time,watch_time,offset_s,rate_spd,temperature_c,position,power_reserve_pct,worn,notes";
+  const header = "date,reference_time,watch_time,offset_s,rate_spd,temperature_c,position,power_reserve_pct,worn,time_corrected,notes";
   const rows = ms.map((m) =>
     [
       m.measuredAt, m.referenceTime, m.watchTime, m.offsetSeconds,
       spdByDate.get(m.measuredAt)?.toFixed(2) ?? "",
       m.temperatureC ?? "", m.position ?? "", m.powerReservePct ?? "",
       m.wornToday ? 1 : 0,
+      m.timeAdjusted ? 1 : 0,
       m.notes ? `"${m.notes.replace(/"/g, '""')}"` : "",
     ].join(",")
   );
@@ -91,6 +92,8 @@ export function MeasurementsTable({
         header: "Rate",
         cell: (c) => {
           const v = c.getValue();
+          if (c.row.original.timeAdjusted)
+            return <Badge color="var(--warning)">time corrected</Badge>;
           if (v == null) return <span className="text-faint">—</span>;
           const color = Math.abs(v) <= 5 ? "var(--positive)" : Math.abs(v) <= 12 ? "var(--warning)" : "var(--critical)";
           return (

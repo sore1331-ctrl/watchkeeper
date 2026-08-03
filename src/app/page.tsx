@@ -145,7 +145,7 @@ export default function DashboardPage() {
             <>
               <HealthRing score={health.score} label={health.label} />
               <HealthBadge label={health.label} />
-              <p className="text-xs text-muted">{healthExplanation(health.label)}</p>
+              <p className="text-xs text-muted">{healthExplanation(health.label, !!spec)}</p>
             </>
           ) : (
             <>

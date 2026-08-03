@@ -24,7 +24,10 @@ export async function upsertWatch(w: Watch) {
     brand: w.brand, model: w.model, reference: w.reference, serial: w.serial,
     movement_type: w.movementType, caliber: w.caliber, beat_rate: w.beatRate,
     power_reserve_hours: w.powerReserveHours, jewels: w.jewels,
-    cosc_certified: w.coscCertified, purchase_date: w.purchaseDate,
+    cosc_certified: w.coscCertified,
+    rate_spec_min: w.rateSpecMin, rate_spec_max: w.rateSpecMax,
+    rate_spec_source: w.rateSpecSource,
+    purchase_date: w.purchaseDate,
     purchase_price: w.purchasePrice, current_value: w.currentValue,
     currency: w.currency, photo_url: w.photoUrl, accent_color: w.accentColor,
     notes: w.notes, battery_installed_at: w.batteryInstalledAt,
@@ -48,6 +51,7 @@ export async function upsertMeasurement(m: Measurement) {
     watch_time: m.watchTime, offset_seconds: m.offsetSeconds,
     temperature_c: m.temperatureC, position: m.position,
     power_reserve_pct: m.powerReservePct, worn_today: m.wornToday,
+    time_adjusted: m.timeAdjusted ?? false,
     notes: m.notes, photo_url: m.photoUrl,
   });
 }

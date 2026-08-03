@@ -106,12 +106,14 @@ export function RateChart({
 
 /** Cumulative offset history area chart. */
 export function OffsetChart({
-  data, color, height = 240, zoom = true,
+  data, color, height = 240, zoom = true, corrections = [],
 }: {
   data: SeriesPoint[];
   color: string;
   height?: number;
   zoom?: boolean;
+  /** ISO dates where the watch was reset — the jump there isn't drift */
+  corrections?: string[];
 }) {
   const id = React.useId();
   return (
@@ -127,6 +129,12 @@ export function OffsetChart({
         <XAxis dataKey="date" tickFormatter={fmtDay} {...AXIS} minTickGap={40} />
         <YAxis {...AXIS} width={46} tickFormatter={(v: number) => `${v > 0 ? "+" : ""}${v}s`} />
         <ReferenceLine y={0} stroke="var(--faint)" strokeDasharray="4 4" />
+        {corrections.map((c) => (
+          <ReferenceLine
+            key={c} x={c} stroke="var(--warning)" strokeDasharray="3 3" strokeOpacity={0.8}
+            label={{ value: "reset", fill: "var(--warning)", fontSize: 10, position: "top" }}
+          />
+        ))}
         <Tooltip content={<ChartTip unit="s" labelFormatter={(l) => fmtDay(String(l))} />} />
         <Area
           name="Offset" type="monotone" dataKey="offset" stroke={color}
