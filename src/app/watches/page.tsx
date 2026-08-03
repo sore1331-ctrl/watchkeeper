@@ -29,7 +29,7 @@ export default function WatchesPage() {
           stats,
           health,
           grade: accuracyGrade(
-            stats.avgSpd, w.movementType, w.coscCertified, stats.count, rateSpecFor(w)
+            stats.avgSpd, w.movementType, w.coscCertified, stats.gradableCount, rateSpecFor(w)
           ),
           sinceService: daysSince(lastServiceDate(services) ?? w.purchaseDate ?? null),
         };
@@ -40,7 +40,7 @@ export default function WatchesPage() {
   const agg = useMemo(() => {
     const withStats = rows.filter((r) => r.stats.avgSpd != null);
     if (!withStats.length) return null;
-    const by = <T,>(fn: (r: (typeof rows)[number]) => number, dir: 1 | -1 = 1) =>
+    const by = (fn: (r: (typeof rows)[number]) => number, dir: 1 | -1 = 1) =>
       [...withStats].sort((a, b) => dir * (fn(a) - fn(b)))[0];
     const mostAccurate = by((r) => Math.abs(r.stats.avgSpd!));
     const leastAccurate = by((r) => Math.abs(r.stats.avgSpd!), -1);
@@ -115,7 +115,7 @@ export default function WatchesPage() {
                     </p>
                   </div>
                 </div>
-                <GradeBadge grade={grade} movement={w.movementType} count={stats.count} explain={false} />
+                <GradeBadge grade={grade} movement={w.movementType} count={stats.gradableCount} explain={false} />
               </div>
               <div className="mt-4 grid grid-cols-3 gap-2 text-center">
                 <div className="rounded-lg bg-surface-2/60 p-2">
@@ -135,7 +135,7 @@ export default function WatchesPage() {
               </div>
               <div className="mt-3 flex items-center justify-between text-xs text-muted">
                 <span>{stats.count} measurements</span>
-                <HealthBadge label={health?.label ?? null} count={stats.count} explain={false} />
+                <HealthBadge label={health?.label ?? null} count={stats.gradableCount} explain={false} />
               </div>
               <p className="mt-2 text-[11px] text-faint">
                 Purchased {fmtDate(w.purchaseDate)} · {fmtMoney(w.currentValue, w.currency)}

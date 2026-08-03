@@ -160,15 +160,11 @@ export function generateInsights(
       });
   }
 
-  // Power reserve behavior
-  const lowPR = stats.samples.filter((s, i) => {
-    const m = measurements.find((mm) => mm.measuredAt === s.date);
-    return m?.powerReservePct != null && m.powerReservePct < 35 && i > 0;
-  });
-  const highPR = stats.samples.filter((s) => {
-    const m = measurements.find((mm) => mm.measuredAt === s.date);
-    return m?.powerReservePct != null && m.powerReservePct >= 65;
-  });
+  // Power reserve behaviour. The sample already carries the reserve recorded at
+  // the START of its interval — that is the state the watch ran in. Looking up
+  // by s.date would fetch the reading that ENDED the interval instead.
+  const lowPR = stats.samples.filter((s) => s.powerReservePct != null && s.powerReservePct < 35);
+  const highPR = stats.samples.filter((s) => s.powerReservePct != null && s.powerReservePct >= 65);
   if (watch.movementType !== "quartz" && lowPR.length >= 3 && highPR.length >= 3) {
     const dLow = mean(lowPR.map((s) => s.spd));
     const dHigh = mean(highPR.map((s) => s.spd));

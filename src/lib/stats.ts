@@ -25,7 +25,14 @@ export interface RateSample {
 }
 
 export interface WatchStats {
+  /** measurements recorded, including any excluded from rate analysis */
   count: number;
+  /**
+   * Measurements that actually contribute to the rate. Time corrections and
+   * stopped-watch intervals produce no sample, so this is what grading must
+   * wait on — ten readings that are nine resets are still one data point.
+   */
+  gradableCount: number;
   currentOffset: number | null;
   lastMeasuredAt: string | null;
   /** most recent daily rate sample */
@@ -301,6 +308,7 @@ export function computeStats(measurements: Measurement[]): WatchStats {
 
   const empty: WatchStats = {
     count: ms.length,
+    gradableCount: samples.length ? samples.length + 1 : 0,
     currentOffset: last ? last.offsetSeconds : null,
     lastMeasuredAt: last ? last.measuredAt : null,
     todayRate: null, avgSpd: null, medianSpd: null, maxGain: null, maxLoss: null,

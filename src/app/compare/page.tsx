@@ -15,7 +15,10 @@ export default function ComparePage() {
   const { ready, watches, measurementsFor, servicesFor } = useStore();
   const active = watches.filter((w) => !w.archived);
   const [selected, setSelected] = useState<string[]>([]);
-  const ids = selected.length >= 2 ? selected : active.slice(0, 3).map((w) => w.id);
+  // Any explicit selection is honoured, including a single watch. Only an
+  // empty selection falls back to a default set — previously dropping to one
+  // watch silently snapped the view back to three.
+  const ids = selected.length ? selected : active.slice(0, 3).map((w) => w.id);
 
   const rows = useMemo(
     () =>
@@ -29,7 +32,7 @@ export default function ComparePage() {
             health: healthScore(w, stats, servicesFor(w.id)),
             spec: rateSpecFor(w),
             grade: accuracyGrade(
-              stats.avgSpd, w.movementType, w.coscCertified, stats.count, rateSpecFor(w)
+              stats.avgSpd, w.movementType, w.coscCertified, stats.gradableCount, rateSpecFor(w)
             ),
             services: servicesFor(w.id),
           };
@@ -96,10 +99,10 @@ export default function ComparePage() {
     { label: "Weekly variance", get: (r) => r.stats.weeklyVariance?.toFixed(2) ?? "—" },
     { label: "Monthly variance", get: (r) => r.stats.monthlyVariance?.toFixed(2) ?? "—" },
     { label: "Consistency", get: (r) => (r.stats.consistencyIndex != null ? `${r.stats.consistencyIndex}%` : "—") },
-    { label: "Grade", get: (r) => <GradeBadge grade={r.grade} movement={r.watch.movementType} count={r.stats.count} spec={r.spec} avgSpd={r.stats.avgSpd} /> },
+    { label: "Grade", get: (r) => <GradeBadge grade={r.grade} movement={r.watch.movementType} count={r.stats.gradableCount} spec={r.spec} avgSpd={r.stats.avgSpd} /> },
     { label: "Rate spec", get: (r) => (r.spec ? `${r.spec.min > 0 ? "+" : ""}${r.spec.min} / ${r.spec.max > 0 ? "+" : ""}${r.spec.max} s/d` : "—") },
     { label: "Within spec", get: (r) => (r.spec && r.stats.avgSpd != null ? (r.stats.avgSpd >= r.spec.min && r.stats.avgSpd <= r.spec.max ? "Yes" : "No") : "—") },
-    { label: "Health", get: (r) => <HealthBadge label={r.health?.label ?? null} count={r.stats.count} /> },
+    { label: "Health", get: (r) => <HealthBadge label={r.health?.label ?? null} count={r.stats.gradableCount} /> },
     { label: "Movement", get: (r) => <span className="capitalize">{r.watch.movementType}</span> },
     { label: "Caliber", get: (r) => r.watch.caliber ?? "—" },
     { label: "Power reserve", get: (r) => (r.watch.powerReserveHours ? `${r.watch.powerReserveHours} h` : "—") },

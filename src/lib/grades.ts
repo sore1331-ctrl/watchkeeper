@@ -205,7 +205,8 @@ export function healthScore(
   services: ServiceRecord[]
 ): HealthResult | null {
   if (stats.avgSpd == null) return null;
-  if (stats.count < MIN_MEASUREMENTS_FOR_GRADE) return null;
+  // gate on readings that actually contributed a rate, not raw entries
+  if (stats.gradableCount < MIN_MEASUREMENTS_FOR_GRADE) return null;
 
   // Accuracy is scored against the movement's own tolerance when known: a
   // 4R34 at −28 s/d is in spec and should not be marked down like a chronometer

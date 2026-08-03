@@ -6,12 +6,12 @@ import React, { useMemo, useState } from "react";
 import { Download, FileText, Printer } from "lucide-react";
 import { useStore } from "@/lib/store";
 import {
-  computeStats, fmtSpd, groupByPeriod, isoWeekKey, mean, stdDev, variance,
+  computeStats, fmtSpd, groupByPeriod, mean, stdDev, variance,
 } from "@/lib/stats";
 import { accuracyGrade, healthScore, nextServiceEstimate, rateSpecFor } from "@/lib/grades";
 import { GradeBadge, HealthBadge, SectionTitle, StatCard } from "@/components/widgets";
 import { Button, Card, Skeleton, Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui";
-import { exportMeasurementsCsv } from "@/components/measurements-table";
+import { csvField, exportMeasurementsCsv } from "@/components/measurements-table";
 
 const DAY_MS = 86_400_000;
 
@@ -38,7 +38,7 @@ export default function ReportsPage() {
     const health = healthScore(watch, stats, services);
     const spec = rateSpecFor(watch);
     const grade = accuracyGrade(
-      stats.avgSpd, watch.movementType, watch.coscCertified, stats.count, spec
+      stats.avgSpd, watch.movementType, watch.coscCertified, stats.gradableCount, spec
     );
 
     // Weekly summary (last full 7 days)
@@ -70,8 +70,20 @@ export default function ReportsPage() {
     } : null;
 
     const suggestions: string[] = [];
-    if (stats.avgSpd != null && Math.abs(stats.avgSpd) > 8)
-      suggestions.push("Rate exceeds ±8 s/d — consider regulation.");
+    // Judge the rate against the movement's own tolerance, not a fixed ±8 s/d —
+    // a 4R34 is built to -35/+45 and needs nothing at -28.
+    if (stats.avgSpd != null) {
+      if (spec) {
+        if (stats.avgSpd < spec.min || stats.avgSpd > spec.max)
+          suggestions.push(
+            `Rate is outside the ${spec.min > 0 ? "+" : ""}${spec.min}/${spec.max > 0 ? "+" : ""}${spec.max} s/d specification — regulation would bring it back in band.`
+          );
+      } else if (Math.abs(stats.avgSpd) > 20) {
+        suggestions.push(
+          "Rate is a long way from zero. Set this caliber's tolerance in the watch profile to judge whether that is actually out of spec."
+        );
+      }
+    }
     if (weekly && weekly.sd > 3)
       suggestions.push("Weekly σ above 3 s/d — check for magnetization or position sensitivity.");
     if (stats.weeklyVariance != null && stats.monthlyVariance != null && stats.weeklyVariance > 2 * stats.monthlyVariance)
@@ -80,7 +92,7 @@ export default function ReportsPage() {
       suggestions.push("Running outside COSC — a service center can restore chronometer spec.");
     if (!suggestions.length) suggestions.push("Performance is healthy — keep the current routine.");
 
-    return { ms, stats, services, health, grade, weekly, monthly, suggestions,
+    return { ms, stats, services, health, grade, spec, weekly, monthly, suggestions,
       nextService: nextServiceEstimate(watch, services) };
   }, [watch, measurementsFor, servicesFor]);
 
@@ -101,10 +113,10 @@ export default function ReportsPage() {
     const rows = active.map((w) => {
       const s = computeStats(measurementsFor(w.id));
       const h = healthScore(w, s, servicesFor(w.id));
-      const g = accuracyGrade(s.avgSpd, w.movementType, w.coscCertified, s.count, rateSpecFor(w));
+      const g = accuracyGrade(s.avgSpd, w.movementType, w.coscCertified, s.gradableCount, rateSpecFor(w));
       return [w.brand, w.model, w.reference ?? "", w.movementType, w.caliber ?? "",
         s.avgSpd?.toFixed(2) ?? "", s.stdDev?.toFixed(2) ?? "", s.variance?.toFixed(2) ?? "",
-        g ?? "", h?.score ?? "", s.count].join(",");
+        g ?? "", h?.score ?? "", s.count].map(csvField).join(",");
     });
     download("watchkeeper-collection.csv", "text/csv", [header, ...rows].join("\n"));
   };
@@ -152,8 +164,8 @@ export default function ReportsPage() {
             </p>
           </div>
           <div className="flex items-center gap-3">
-            <GradeBadge grade={grade} movement={watch.movementType} count={stats.count} />
-            <HealthBadge label={health?.label ?? null} count={stats.count} />
+            <GradeBadge grade={grade} movement={watch.movementType} count={stats.gradableCount} />
+            <HealthBadge label={health?.label ?? null} count={stats.gradableCount} />
           </div>
         </div>
         <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-4">

@@ -205,8 +205,24 @@ export function MeasurementDialog({
   };
 
   const handleOpenChange = (next: boolean) => {
-    // the clock must read "now" at the moment you open the form, not page load
-    if (next) syncToNow();
+    if (next) {
+      const t = nowHms();
+      setForm((f) => ({
+        ...f,
+        // The dialog stays mounted while the page's selected watch changes, so
+        // the target must be re-read on open — otherwise a measurement lands
+        // on whichever watch happened to be selected when the page first rendered.
+        watchId:
+          watchId ??
+          (active.some((w) => w.id === f.watchId) ? f.watchId : active[0]?.id ?? ""),
+        // the clock must read "now" when you open the form, not at page load
+        referenceTime: t,
+        watchTime: t,
+        // per-reading flags must not carry over from the previous entry
+        timeAdjusted: false,
+        notes: "",
+      }));
+    }
     setOpen(next);
   };
 
@@ -249,7 +265,13 @@ export function MeasurementDialog({
     };
     addMeasurement(m);
     setOpen(false);
-    setForm((f) => ({ ...f, referenceTime: nowHms(), watchTime: nowHms(), notes: "" }));
+    // clear the per-reading fields; timeAdjusted especially must not stick,
+    // or every later measurement would be treated as a fresh baseline
+    setForm((f) => ({
+      ...f,
+      referenceTime: nowHms(), watchTime: nowHms(),
+      timeAdjusted: false, notes: "",
+    }));
   };
 
   return (

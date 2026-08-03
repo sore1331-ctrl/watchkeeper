@@ -34,7 +34,7 @@ export default function DashboardPage() {
     const health = healthScore(watch, stats, services);
     const spec = rateSpecFor(watch);
     const grade = accuracyGrade(
-      stats.avgSpd, watch.movementType, watch.coscCertified, stats.count, spec
+      stats.avgSpd, watch.movementType, watch.coscCertified, stats.gradableCount, spec
     );
     const rolling = rollingAverage(stats.samples, 7);
     const chartData = stats.samples.map((s, i) => ({
@@ -75,7 +75,7 @@ export default function DashboardPage() {
             <h1 className="text-2xl font-bold tracking-tight">
               {watch.brand} <span className="text-muted">{watch.model}</span>
             </h1>
-            <GradeBadge grade={grade} movement={watch.movementType} count={stats.count}
+            <GradeBadge grade={grade} movement={watch.movementType} count={stats.gradableCount}
               spec={spec} avgSpd={stats.avgSpd} />
           </div>
         </div>
@@ -103,7 +103,7 @@ export default function DashboardPage() {
         <StatCard label="Avg daily rate" value={fmtSpd(stats.avgSpd)}
           sub={`median ${fmtSpd(stats.medianSpd)}`} delay={0.1} />
         <StatCard label="Movement health" value={health ? `${health.score}` : "—"}
-          sub={<HealthBadge label={health?.label ?? null} count={stats.count} />} delay={0.15} />
+          sub={<HealthBadge label={health?.label ?? null} count={stats.gradableCount} />} delay={0.15} />
         <StatCard label="Weekly variance" value={stats.weeklyVariance?.toFixed(2) ?? "—"}
           sub="s²/d, last 7 days" delay={0.2} />
         <StatCard label="Monthly variance" value={stats.monthlyVariance?.toFixed(2) ?? "—"}
@@ -149,10 +149,10 @@ export default function DashboardPage() {
             </>
           ) : (
             <>
-              <HealthBadge label={null} count={stats.count} />
+              <HealthBadge label={null} count={stats.gradableCount} />
               <p className="text-xs text-muted">
-                {stats.count < MIN_MEASUREMENTS_FOR_GRADE
-                  ? `Health scoring starts at ${MIN_MEASUREMENTS_FOR_GRADE} measurements — ${MIN_MEASUREMENTS_FOR_GRADE - stats.count} to go.`
+                {stats.gradableCount < MIN_MEASUREMENTS_FOR_GRADE
+                  ? `Health scoring starts at ${MIN_MEASUREMENTS_FOR_GRADE} measurements — ${MIN_MEASUREMENTS_FOR_GRADE - stats.gradableCount} to go.`
                   : "Not enough data yet."}
               </p>
             </>
@@ -196,7 +196,7 @@ export default function DashboardPage() {
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         {active.map((w) => {
           const s = computeStats(measurementsFor(w.id));
-          const g = accuracyGrade(s.avgSpd, w.movementType, w.coscCertified, s.count, rateSpecFor(w));
+          const g = accuracyGrade(s.avgSpd, w.movementType, w.coscCertified, s.gradableCount, rateSpecFor(w));
           return (
             <Link key={w.id} href={`/watches/${w.id}`}>
               <Card className="group cursor-pointer p-4 transition-colors hover:border-accent/40">
@@ -213,7 +213,7 @@ export default function DashboardPage() {
                 <div className="mt-3 flex items-center justify-between">
                   <span className="text-sm font-bold tabular-nums">{fmtSpd(s.avgSpd)}</span>
                   {/* inside a Link — no popover trigger (nested interactive) */}
-                  <GradeBadge grade={g} movement={w.movementType} count={s.count} explain={false} />
+                  <GradeBadge grade={g} movement={w.movementType} count={s.gradableCount} explain={false} />
                 </div>
               </Card>
             </Link>

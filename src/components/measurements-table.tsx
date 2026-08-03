@@ -26,6 +26,12 @@ function downloadFile(name: string, mime: string, content: string) {
   URL.revokeObjectURL(url);
 }
 
+/** RFC4180 field: quote when it contains a comma, quote or newline. */
+export function csvField(v: unknown): string {
+  const s = v == null ? "" : String(v);
+  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
 export function exportMeasurementsCsv(watch: Watch, ms: Measurement[]) {
   const samples = rateSamples(ms);
   const spdByDate = new Map(samples.map((s) => [s.date, s.spd]));
@@ -37,8 +43,8 @@ export function exportMeasurementsCsv(watch: Watch, ms: Measurement[]) {
       m.temperatureC ?? "", m.position ?? "", m.powerReservePct ?? "",
       m.wornToday ? 1 : 0,
       m.timeAdjusted ? 1 : 0,
-      m.notes ? `"${m.notes.replace(/"/g, '""')}"` : "",
-    ].join(",")
+      m.notes ?? "",
+    ].map(csvField).join(",")
   );
   downloadFile(
     `${watch.brand}-${watch.model}-measurements.csv`.replace(/\s+/g, "_"),

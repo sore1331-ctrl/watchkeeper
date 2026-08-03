@@ -14,7 +14,7 @@ import {
 } from "@/lib/stats";
 import {
   accuracyGrade, batteryRemaining, daysSince, healthExplanation, healthScore,
-  lastRegulationDate, lastServiceDate, MIN_MEASUREMENTS_FOR_GRADE, nextServiceEstimate,
+  lastServiceDate, MIN_MEASUREMENTS_FOR_GRADE, nextServiceEstimate,
   rateSpecFor,
 } from "@/lib/grades";
 import { fmtDate, fmtDateTime, fmtMoney } from "@/lib/utils";
@@ -79,7 +79,7 @@ export default function WatchDetailPage() {
       health: healthScore(watch, stats, services),
       spec: rateSpecFor(watch),
       grade: accuracyGrade(
-        stats.avgSpd, watch.movementType, watch.coscCertified, stats.count, rateSpecFor(watch)
+        stats.avgSpd, watch.movementType, watch.coscCertified, stats.gradableCount, rateSpecFor(watch)
       ),
       anomaly: detectAnomaly(stats.samples),
       chartData, weekly, monthly, forecast, history, wearByDay, tempData,
@@ -113,7 +113,7 @@ export default function WatchDetailPage() {
             <h1 className="text-2xl font-bold tracking-tight">
               {watch.brand} <span className="text-muted">{watch.model}</span>
             </h1>
-            <GradeBadge grade={grade} movement={watch.movementType} count={stats.count}
+            <GradeBadge grade={grade} movement={watch.movementType} count={stats.gradableCount}
               spec={spec} avgSpd={stats.avgSpd} />
             {spec ? (
               <Badge color="var(--faint)">
@@ -292,12 +292,12 @@ export default function WatchDetailPage() {
           ) : (
             <Card className="flex flex-col items-center gap-2 p-6 text-center">
               <p className="text-sm font-semibold">Movement health</p>
-              <HealthBadge label={null} count={stats.count} />
+              <HealthBadge label={null} count={stats.gradableCount} />
               <p className="max-w-lg text-xs text-muted">
                 Accuracy grading and health scoring need at least {MIN_MEASUREMENTS_FOR_GRADE}{" "}
                 measurements. Below that a single early or late reading can shift the average rate by
                 tens of seconds per day, so a verdict here would be noise rather than signal.
-                {stats.count > 0 && ` ${Math.max(0, MIN_MEASUREMENTS_FOR_GRADE - stats.count)} more to go.`}
+                {stats.gradableCount > 0 && ` ${Math.max(0, MIN_MEASUREMENTS_FOR_GRADE - stats.gradableCount)} more to go.`}
               </p>
             </Card>
           )}

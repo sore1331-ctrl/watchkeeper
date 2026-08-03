@@ -19,12 +19,23 @@ import * as repo from "./supabase/repo";
 
 const LS_KEY = "watchkeeper-v1";
 
+/**
+ * Dismissals are snoozes, not permanent mutes: a watch that is still overdue
+ * next week should say so again. Persisted with the time they were made.
+ */
+export interface Dismissal {
+  key: string;
+  at: string;
+}
+
+const SNOOZE_DAYS = 7;
+
 interface PersistedState {
   watches: Watch[];
   measurements: Measurement[];
   services: ServiceRecord[];
   settings: AppSettings;
-  dismissedNotifications: string[];
+  dismissedNotifications: Dismissal[];
   demo: boolean;
 }
 
@@ -67,7 +78,15 @@ function loadPersisted(): PersistedState | null {
   if (typeof window === "undefined") return null;
   try {
     const raw = window.localStorage.getItem(LS_KEY);
-    return raw ? (JSON.parse(raw) as PersistedState) : null;
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as PersistedState;
+    return {
+      ...parsed,
+      // earlier builds stored bare keys that never expired
+      dismissedNotifications: (parsed.dismissedNotifications ?? []).map((d) =>
+        typeof d === "string" ? { key: d as string, at: new Date().toISOString() } : d
+      ),
+    };
   } catch {
     return null;
   }
@@ -128,7 +147,13 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     }
     const notifications = state
       ? generateNotifications(s.watches, byWatch, svcByWatch, s.settings.measurementReminderDays)
-          .filter((n) => !s.dismissedNotifications.includes(`${n.kind}:${n.watchId}`))
+          .filter((n) => {
+            const snoozed = s.dismissedNotifications.find(
+              (d) => d.key === `${n.kind}:${n.watchId}`
+            );
+            if (!snoozed) return true;
+            return Date.now() - +new Date(snoozed.at) > SNOOZE_DAYS * 86_400_000;
+          })
       : [];
     const insights = state
       ? s.watches.flatMap((w) =>
@@ -208,7 +233,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       dismissNotification: (key) => {
         mutate((st) => ({
           ...st,
-          dismissedNotifications: [...st.dismissedNotifications, key],
+          dismissedNotifications: [
+            ...st.dismissedNotifications.filter((d) => d.key !== key),
+            { key, at: new Date().toISOString() },
+          ],
         }));
       },
       resetDemoData: () => setState(freshDemoState()),
