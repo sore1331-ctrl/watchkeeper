@@ -37,7 +37,15 @@ export type ServiceType =
   | "parts-replacement"
   | "water-resistance";
 
-export interface ServiceRecord {
+/**
+ * Every synced record carries the moment it last changed on the device that
+ * changed it. Sync resolves conflicts by keeping the newer one.
+ */
+export interface Synced {
+  updatedAt?: string;
+}
+
+export interface ServiceRecord extends Synced {
   id: string;
   watchId: string;
   date: string; // ISO date
@@ -51,7 +59,7 @@ export interface ServiceRecord {
   waterResistanceRating?: string;
 }
 
-export interface Measurement {
+export interface Measurement extends Synced {
   id: string;
   watchId: string;
   /** ISO datetime the measurement was taken */
@@ -76,7 +84,7 @@ export interface Measurement {
   photoUrl?: string;
 }
 
-export interface Watch {
+export interface Watch extends Synced {
   id: string;
   brand: string;
   model: string;

@@ -3,6 +3,7 @@
 // ─── Settings ───────────────────────────────────────────────────────────────
 
 import React from "react";
+import Link from "next/link";
 import { Cloud, Database, RefreshCcw } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { Button, Card, Input, Label, Select, Skeleton } from "@/components/ui";
@@ -67,10 +68,15 @@ export default function SettingsPage() {
             <p className="text-xs text-muted">
               {supabaseConfigured
                 ? cloudSynced
-                  ? "Connected and mirroring changes to your Supabase project."
-                  : "Supabase is configured — sign in to enable sync."
+                  ? "Signed in — your watches sync across devices."
+                  : "Create an account to use WatchKeeper on your phone and other browsers."
                 : "Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY to enable optional cloud sync."}
             </p>
+            {supabaseConfigured && (
+              <Link href="/account" className="mt-1 inline-block text-xs font-medium text-accent hover:underline">
+                {cloudSynced ? "Manage account →" : "Set up an account →"}
+              </Link>
+            )}
           </div>
         </div>
         <div className="border-t border-border-token pt-4">

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Bell, ChartSpline, Cloud, CloudOff, FileText, GitCompareArrows, LayoutDashboard,
-  Lightbulb, Moon, Settings, Sun, Watch as WatchIcon, Wrench, X,
+  Lightbulb, Moon, RefreshCw, Settings, Sun, UserRound, Watch as WatchIcon, Wrench, X,
 } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { cn } from "@/lib/utils";
@@ -20,6 +20,7 @@ const NAV = [
   { href: "/insights", label: "Insights", icon: Lightbulb },
   { href: "/services", label: "Service", icon: Wrench },
   { href: "/reports", label: "Reports", icon: FileText },
+  { href: "/account", label: "Account", icon: UserRound },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
@@ -99,7 +100,7 @@ function NotificationsPanel({ onClose }: { onClose: () => void }) {
 export function Shell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { dark, toggle } = useTheme();
-  const { notifications, demo, cloudSynced, ready } = useStore();
+  const { notifications, demo, cloudSynced, ready, sync, user } = useStore();
   const [showNotifs, setShowNotifs] = useState(false);
 
   return (
@@ -135,13 +136,30 @@ export function Shell({ children }: { children: React.ReactNode }) {
           })}
         </nav>
         <div className="px-5 py-4 text-[11px] text-faint">
-          {ready && (demo ? (
-            <Badge color="var(--info)">Demo data</Badge>
-          ) : cloudSynced ? (
-            <span className="flex items-center gap-1.5"><Cloud className="h-3.5 w-3.5" /> Cloud synced</span>
-          ) : (
-            <span className="flex items-center gap-1.5"><CloudOff className="h-3.5 w-3.5" /> Local mode</span>
-          ))}
+          {ready && (
+            <Link href="/account" className="block hover:text-muted">
+              {sync.status === "syncing" ? (
+                <span className="flex items-center gap-1.5">
+                  <RefreshCw className="h-3.5 w-3.5 animate-spin" /> Syncing…
+                </span>
+              ) : sync.status === "error" ? (
+                <span className="flex items-center gap-1.5 text-critical">
+                  <CloudOff className="h-3.5 w-3.5" /> Sync failed
+                </span>
+              ) : cloudSynced ? (
+                <span className="flex items-center gap-1.5">
+                  <Cloud className="h-3.5 w-3.5" />
+                  <span className="truncate">{user?.email ?? "Cloud synced"}</span>
+                </span>
+              ) : demo ? (
+                <Badge color="var(--info)">Demo data</Badge>
+              ) : (
+                <span className="flex items-center gap-1.5">
+                  <CloudOff className="h-3.5 w-3.5" /> Local only — sign in
+                </span>
+              )}
+            </Link>
+          )}
         </div>
       </aside>
 
