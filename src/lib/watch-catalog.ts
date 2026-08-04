@@ -293,6 +293,23 @@ export function filterSuggestions(query: string, options: string[], limit = 8): 
   return [...starts, ...contains].slice(0, limit);
 }
 
+/**
+ * Best catalog match for a brand + model the user typed. Tolerant of partial
+ * names ("Submariner" → "Submariner Date") and of a reference typed into the
+ * model field.
+ */
+export function findCatalogModel(brand: string, model: string): CatalogModel | undefined {
+  const q = model.trim().toLowerCase();
+  if (!q) return undefined;
+  const candidates = modelsForBrand(brand);
+  return (
+    candidates.find((m) => m.model.toLowerCase() === q) ??
+    candidates.find((m) => m.reference?.toLowerCase() === q) ??
+    candidates.find((m) => m.model.toLowerCase().includes(q)) ??
+    candidates.find((m) => q.includes(m.model.toLowerCase()))
+  );
+}
+
 export function modelsForBrand(brand: string): CatalogModel[] {
   const key = Object.keys(WATCH_MODELS).find(
     (k) => k.toLowerCase() === brand.trim().toLowerCase()

@@ -14,6 +14,9 @@ comment on column wk_watches.rate_spec_max is
 alter table wk_measurements
   add column if not exists time_adjusted boolean not null default false;
 
+-- currency is already per-watch (wk_watches.currency / wk_services.currency);
+-- the app now exposes it rather than defaulting everything to one code.
+
 comment on column wk_measurements.time_adjusted is
   'The watch was reset or hand-corrected since the previous measurement, so no '
   'rate sample spans that gap — the offset jump is the correction, not drift.';

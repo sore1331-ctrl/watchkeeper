@@ -10,6 +10,7 @@ import { Button, Dialog, DialogContent, DialogTrigger, Input, Label, Select, Swi
 import {
   filterSuggestions, modelsForBrand, specForCaliber, WATCH_BRANDS, type CatalogModel,
 } from "@/lib/watch-catalog";
+import { CURRENCIES } from "@/lib/utils";
 
 // ── Autocomplete input ──────────────────────────────────────────────────────
 interface Suggestion {
@@ -408,7 +409,7 @@ export function WatchDialog({
   existing?: Watch;
   trigger: React.ReactNode;
 }) {
-  const { addWatch, updateWatch, watches } = useStore();
+  const { addWatch, updateWatch, watches, settings } = useStore();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(() => ({
     brand: existing?.brand ?? "",
@@ -423,6 +424,7 @@ export function WatchDialog({
     coscCertified: existing?.coscCertified ?? false,
     rateSpecMin: existing?.rateSpecMin?.toString() ?? "",
     rateSpecMax: existing?.rateSpecMax?.toString() ?? "",
+    currency: existing?.currency ?? settings.currency,
     purchaseDate: existing?.purchaseDate ?? "",
     purchasePrice: existing?.purchasePrice?.toString() ?? "",
     currentValue: existing?.currentValue?.toString() ?? "",
@@ -499,7 +501,7 @@ export function WatchDialog({
       purchaseDate: form.purchaseDate || undefined,
       purchasePrice: form.purchasePrice ? +form.purchasePrice : undefined,
       currentValue: form.currentValue ? +form.currentValue : undefined,
-      currency: existing?.currency ?? "EUR",
+      currency: form.currency,
       accentColor: existing?.accentColor ?? ACCENTS[watches.length % ACCENTS.length],
       batteryInstalledAt: form.batteryInstalledAt || undefined,
       batteryLifeMonths: form.batteryLifeMonths ? +form.batteryLifeMonths : undefined,
@@ -600,13 +602,27 @@ export function WatchDialog({
               <div><Label>Battery life (months)</Label><Input type="number" value={form.batteryLifeMonths} onChange={(e) => set("batteryLifeMonths", e.target.value)} placeholder="24" /></div>
             </div>
           )}
-          <div className="grid grid-cols-3 gap-3">
-            <div><Label>Purchased</Label><Input type="date" value={form.purchaseDate} onChange={(e) => set("purchaseDate", e.target.value)} /></div>
-            <div><Label>Price</Label><Input type="number" value={form.purchasePrice} onChange={(e) => set("purchasePrice", e.target.value)} /></div>
-            <div><Label>Value now</Label><Input type="number" value={form.currentValue} onChange={(e) => set("currentValue", e.target.value)} /></div>
+          <div className="grid grid-cols-4 gap-3">
+            <div className="col-span-2"><Label>Purchased</Label><Input type="date" value={form.purchaseDate} onChange={(e) => set("purchaseDate", e.target.value)} /></div>
+            <div>
+              <Label>Currency</Label>
+              <Select value={form.currency} onChange={(e) => set("currency", e.target.value)}>
+                {CURRENCIES.map((c) => (
+                  <option key={c.code} value={c.code}>{c.code}</option>
+                ))}
+                {/* keep an unusual existing code selectable */}
+                {!CURRENCIES.some((c) => c.code === form.currency) && (
+                  <option value={form.currency}>{form.currency}</option>
+                )}
+              </Select>
+            </div>
+            <div><Label>Price paid</Label><Input type="number" value={form.purchasePrice} onChange={(e) => set("purchasePrice", e.target.value)} /></div>
           </div>
           <div className="grid grid-cols-2 gap-3">
+            <div><Label>Value now</Label><Input type="number" value={form.currentValue} onChange={(e) => set("currentValue", e.target.value)} /></div>
             <div><Label>Warranty until</Label><Input type="date" value={form.warrantyUntil} onChange={(e) => set("warrantyUntil", e.target.value)} /></div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
             <div className="flex items-end gap-4 pb-1.5">
               <span className="flex items-center gap-2 text-sm text-muted">
                 <Switch checked={form.coscCertified} onCheckedChange={(v) => set("coscCertified", v)} /> COSC
@@ -644,7 +660,7 @@ export function ServiceDialog({
   watchId?: string;
   trigger: React.ReactNode;
 }) {
-  const { watches, addService } = useStore();
+  const { watches, addService, settings } = useStore();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({
     watchId: watchId ?? watches[0]?.id ?? "",
@@ -668,7 +684,7 @@ export function ServiceDialog({
       type: form.type,
       watchmaker: form.watchmaker || "—",
       cost: form.cost ? +form.cost : 0,
-      currency: "EUR",
+      currency: watches.find((w) => w.id === form.watchId)?.currency ?? settings.currency,
       notes: form.notes || undefined,
       partsReplaced: form.partsReplaced
         ? form.partsReplaced.split(",").map((x) => x.trim()).filter(Boolean)

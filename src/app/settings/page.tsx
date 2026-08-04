@@ -9,6 +9,7 @@ import { useStore } from "@/lib/store";
 import { Button, Card, Input, Label, Select, Skeleton } from "@/components/ui";
 import { SectionTitle } from "@/components/widgets";
 import { getSupabase } from "@/lib/supabase/client";
+import { CURRENCIES } from "@/lib/utils";
 
 export default function SettingsPage() {
   const { ready, settings, updateSettings, resetDemoData, demo, cloudSynced } = useStore();
@@ -27,6 +28,23 @@ export default function SettingsPage() {
             value={settings.displayName}
             onChange={(e) => updateSettings({ displayName: e.target.value })}
           />
+        </div>
+        <div>
+          <Label>Currency</Label>
+          <Select
+            value={settings.currency}
+            onChange={(e) => updateSettings({ currency: e.target.value })}
+          >
+            {CURRENCIES.map((c) => (
+              <option key={c.code} value={c.code}>{c.label}</option>
+            ))}
+          </Select>
+          <p className="mt-1 text-[11px] text-faint">
+            Used for new watches and collection totals. Changing it re-labels watches
+            that use your current currency — amounts are never converted, so the figures
+            you entered stay exactly as you typed them. A watch can also be set to its
+            own currency in its profile.
+          </p>
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>

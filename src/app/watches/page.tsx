@@ -8,13 +8,13 @@ import { Plus, Watch as WatchIcon } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { computeStats, fmtSpd } from "@/lib/stats";
 import { accuracyGrade, daysSince, healthScore, lastServiceDate, rateSpecFor } from "@/lib/grades";
-import { fmtMoney, fmtDate } from "@/lib/utils";
+import { fmtMoney, fmtDate, fmtTotal } from "@/lib/utils";
 import { WatchDialog } from "@/components/forms";
 import { GradeBadge, HealthBadge, SectionTitle, StatCard } from "@/components/widgets";
 import { Button, Card, Skeleton } from "@/components/ui";
 
 export default function WatchesPage() {
-  const { ready, watches, measurementsFor, servicesFor } = useStore();
+  const { ready, watches, measurementsFor, servicesFor, settings } = useStore();
   const active = watches.filter((w) => !w.archived);
 
   const rows = useMemo(
@@ -53,7 +53,10 @@ export default function WatchesPage() {
       (a, b) => (a.stats.accuracyTrend ?? 0) - (b.stats.accuracyTrend ?? 0)
     );
     return {
-      value: active.reduce((a, w) => a + (w.currentValue ?? 0), 0),
+      value: fmtTotal(
+        active.map((w) => ({ amount: w.currentValue, currency: w.currency })),
+        settings.currency
+      ),
       mostAccurate, leastAccurate, mostWorn, leastWorn, highVar, lowVar,
       longestSinceService,
       improving: byTrend[0],
@@ -75,7 +78,8 @@ export default function WatchesPage() {
 
       {agg && (
         <div className="grid grid-cols-2 gap-3 md:grid-cols-5 lg:gap-4">
-          <StatCard label="Collection value" value={fmtMoney(agg.value)} delay={0} />
+          <StatCard label="Collection value" value={agg.value}
+            className="[&>p:nth-child(2)]:text-xl" delay={0} />
           <StatCard label="Most accurate" value={name(agg.mostAccurate)}
             sub={fmtSpd(agg.mostAccurate?.stats.avgSpd)} delay={0.05} className="[&>p:nth-child(2)]:text-base" />
           <StatCard label="Least accurate" value={name(agg.leastAccurate)}

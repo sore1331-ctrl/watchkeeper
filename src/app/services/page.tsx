@@ -10,10 +10,10 @@ import { nextServiceEstimate, daysSince, lastServiceDate } from "@/lib/grades";
 import { ServiceDialog } from "@/components/forms";
 import { SectionTitle, StatCard } from "@/components/widgets";
 import { Badge, Button, Card, Empty, Skeleton } from "@/components/ui";
-import { fmtDate, fmtMoney } from "@/lib/utils";
+import { fmtDate, fmtMoney, fmtTotal } from "@/lib/utils";
 
 export default function ServicesPage() {
-  const { ready, watches, services, servicesFor, deleteService } = useStore();
+  const { ready, watches, services, servicesFor, deleteService, settings } = useStore();
   const active = watches.filter((w) => !w.archived);
 
   const upcoming = useMemo(
@@ -31,7 +31,10 @@ export default function ServicesPage() {
 
   if (!ready) return <Skeleton className="h-96" />;
 
-  const totalSpent = services.reduce((a, s) => a + s.cost, 0);
+  const totalSpent = fmtTotal(
+    services.map((s) => ({ amount: s.cost, currency: s.currency })),
+    settings.currency
+  );
   const sorted = [...services].sort((a, b) => b.date.localeCompare(a.date));
 
   return (
@@ -43,7 +46,8 @@ export default function ServicesPage() {
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <StatCard label="Records" value={services.length} />
-        <StatCard label="Total spent" value={fmtMoney(totalSpent)} delay={0.05} />
+        <StatCard label="Total spent" value={totalSpent}
+          className="[&>p:nth-child(2)]:text-xl" delay={0.05} />
         <StatCard label="Watches tracked" value={active.length} delay={0.1} />
         <StatCard label="Due within 90 days"
           value={upcoming.filter((u) => +new Date(u.next!) - Date.now() < 90 * 86_400_000).length}

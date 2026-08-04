@@ -11,7 +11,7 @@ import {
   accuracyGrade, batteryRemaining, daysSince, healthExplanation, healthScore,
   lastRegulationDate, lastServiceDate, MIN_MEASUREMENTS_FOR_GRADE, rateSpecFor,
 } from "@/lib/grades";
-import { fmtMoney, relTime } from "@/lib/utils";
+import { fmtTotal, relTime } from "@/lib/utils";
 import { MeasurementDialog } from "@/components/forms";
 import { RateChart, OffsetChart, AccuracyHeatmap } from "@/components/charts";
 import {
@@ -225,7 +225,11 @@ export default function DashboardPage() {
       <p className="mt-8 flex items-center gap-2 text-xs text-faint">
         <CalendarClock className="h-3.5 w-3.5" />
         {active.length} watches · {store.measurements.length} measurements ·
-        collection value {fmtMoney(active.reduce((a, w) => a + (w.currentValue ?? 0), 0))}
+        collection value{" "}
+        {fmtTotal(
+          active.map((w) => ({ amount: w.currentValue, currency: w.currency })),
+          store.settings.currency
+        )}
       </p>
     </div>
   );

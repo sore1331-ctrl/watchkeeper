@@ -13,7 +13,7 @@ import type {
 } from "./types";
 import { DEMO_WATCHES, DEMO_SERVICES, generateDemoMeasurements } from "./demo-data";
 import { generateInsights, generateNotifications } from "./insights";
-import { uid } from "./utils";
+import { detectCurrency, uid } from "./utils";
 import { getSupabase } from "./supabase/client";
 import * as repo from "./supabase/repo";
 import { mergeCollection, touch } from "./sync";
@@ -52,6 +52,7 @@ export type SyncState =
 
 const DEFAULT_SETTINGS: AppSettings = {
   displayName: "Collector",
+  currency: "GBP", // replaced by the browser's locale on first run
   temperatureUnit: "C",
   measurementReminderDays: 3,
   serviceIntervalYears: 5,
@@ -101,8 +102,23 @@ function loadPersisted(): PersistedState | null {
     const raw = window.localStorage.getItem(LS_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as PersistedState;
+
+    // Data saved before the currency setting existed: adopt whatever the
+    // watches are already labelled with, so the picker opens on the truth
+    // rather than silently re-labelling everything.
+    const settings = { ...DEFAULT_SETTINGS, ...parsed.settings };
+    if (!parsed.settings?.currency) {
+      const counts = new Map<string, number>();
+      for (const w of parsed.watches ?? []) {
+        if (w.currency) counts.set(w.currency, (counts.get(w.currency) ?? 0) + 1);
+      }
+      const commonest = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+      settings.currency = commonest ?? detectCurrency();
+    }
+
     return {
       ...parsed,
+      settings,
       // earlier builds stored bare keys that never expired
       dismissedNotifications: (parsed.dismissedNotifications ?? []).map((d) =>
         typeof d === "string" ? { key: d as string, at: new Date().toISOString() } : d
@@ -114,11 +130,14 @@ function loadPersisted(): PersistedState | null {
 }
 
 function freshDemoState(): PersistedState {
+  // Sample figures are shown in the viewer's own currency — the numbers are
+  // illustrative either way, and it avoids inventing a currency for someone.
+  const currency = detectCurrency();
   return {
-    watches: DEMO_WATCHES,
+    watches: DEMO_WATCHES.map((w) => ({ ...w, currency })),
     measurements: generateDemoMeasurements(),
-    services: DEMO_SERVICES,
-    settings: DEFAULT_SETTINGS,
+    services: DEMO_SERVICES.map((s) => ({ ...s, currency })),
+    settings: { ...DEFAULT_SETTINGS, currency },
     dismissedNotifications: [],
     demo: true,
   };
@@ -384,7 +403,22 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         repo.deleteService(id);
       },
       updateSettings: (patch) => {
-        mutate((st) => ({ ...st, settings: { ...st.settings, ...patch } }));
+        mutate((st) => {
+          const next = { ...st, settings: { ...st.settings, ...patch } };
+          // Changing the collection currency re-labels the watches that were
+          // still on the previous default. Amounts are never converted — the
+          // figure you typed stays the figure you typed.
+          if (patch.currency && patch.currency !== st.settings.currency) {
+            const from = st.settings.currency;
+            next.watches = st.watches.map((w) =>
+              w.currency === from ? touch({ ...w, currency: patch.currency! }) : w
+            );
+            next.services = st.services.map((sv) =>
+              sv.currency === from ? touch({ ...sv, currency: patch.currency! }) : sv
+            );
+          }
+          return next;
+        });
       },
       dismissNotification: (key) => {
         mutate((st) => ({

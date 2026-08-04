@@ -149,6 +149,8 @@ export interface Insight {
 
 export interface AppSettings {
   displayName: string;
+  /** ISO 4217 code used for new watches and collection totals */
+  currency: string;
   temperatureUnit: "C" | "F";
   measurementReminderDays: number;
   serviceIntervalYears: number;
