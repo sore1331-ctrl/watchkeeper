@@ -7,12 +7,13 @@ import {
   createColumnHelper, flexRender, getCoreRowModel, getPaginationRowModel,
   getSortedRowModel, useReactTable, type SortingState,
 } from "@tanstack/react-table";
-import { ArrowUpDown, ChevronLeft, ChevronRight, Download, Trash2 } from "lucide-react";
+import { ArrowUpDown, Check, ChevronLeft, ChevronRight, Download, Pencil, Trash2 } from "lucide-react";
 import type { Measurement, Watch } from "@/lib/types";
 import { useStore } from "@/lib/store";
 import { rateSamples } from "@/lib/stats";
 import { fmtDateTime } from "@/lib/utils";
 import { Badge, Button, Card } from "./ui";
+import { MeasurementDialog } from "./forms";
 
 type Row = Measurement & { spd: number | null };
 
@@ -61,6 +62,8 @@ export function MeasurementsTable({
 }) {
   const { deleteMeasurement } = useStore();
   const [sorting, setSorting] = useState<SortingState>([{ id: "measuredAt", desc: true }]);
+  const [editing, setEditing] = useState<Measurement | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
   const rows = useMemo<Row[]>(() => {
     const samples = rateSamples(measurements);
@@ -128,18 +131,40 @@ export function MeasurementsTable({
       col.display({
         id: "actions",
         cell: (c) => (
-          <button
-            onClick={() => deleteMeasurement(c.row.original.id)}
-            className="cursor-pointer rounded p-1 text-faint hover:text-critical"
-            title="Delete measurement"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </button>
+          <div className="flex items-center gap-0.5">
+            <button
+              onClick={() => setEditing(c.row.original)}
+              className="cursor-pointer rounded p-1 text-faint hover:text-accent"
+              title="Edit measurement"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </button>
+            <button
+              onClick={() =>
+                confirmDelete === c.row.original.id
+                  ? deleteMeasurement(c.row.original.id)
+                  : setConfirmDelete(c.row.original.id)
+              }
+              onBlur={() => setConfirmDelete(null)}
+              className={`cursor-pointer rounded p-1 ${
+                confirmDelete === c.row.original.id
+                  ? "text-critical"
+                  : "text-faint hover:text-critical"
+              }`}
+              title={confirmDelete === c.row.original.id ? "Click again to delete" : "Delete measurement"}
+            >
+              {confirmDelete === c.row.original.id ? (
+                <Check className="h-3.5 w-3.5" />
+              ) : (
+                <Trash2 className="h-3.5 w-3.5" />
+              )}
+            </button>
+          </div>
         ),
       }),
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [deleteMeasurement]
+    [deleteMeasurement, confirmDelete]
   );
 
   const table = useReactTable({
@@ -155,6 +180,13 @@ export function MeasurementsTable({
 
   return (
     <Card className="overflow-hidden p-0">
+      {/* one dialog shared by every row, opened with the reading being edited */}
+      <MeasurementDialog
+        existing={editing}
+        trigger={null}
+        open={editing !== null}
+        onOpenChange={(o) => { if (!o) setEditing(null); }}
+      />
       <div className="flex items-center justify-between border-b border-border-token px-4 py-3">
         <p className="text-sm font-semibold">{rows.length} measurements</p>
         <div className="flex gap-2">

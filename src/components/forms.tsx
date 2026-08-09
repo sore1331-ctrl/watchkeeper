@@ -2,7 +2,7 @@
 
 // ─── Entry forms: quick measurement, watch profile, service record ──────────
 
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Plus } from "lucide-react";
 import { useStore } from "@/lib/store";
 import type { Measurement, MovementType, ServiceRecord, ServiceType, Watch, WatchPosition } from "@/lib/types";
@@ -176,17 +176,33 @@ const nowHms = () => {
   return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 };
 
+/** ISO instant → value for <input type="datetime-local"> in local time. */
+function toLocalInput(iso: string): string {
+  const d = new Date(iso);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+
 export function MeasurementDialog({
-  watchId, trigger,
+  watchId, trigger, existing, open: openProp, onOpenChange,
 }: {
   watchId?: string;
   trigger?: React.ReactNode;
+  /** when supplied the dialog edits this reading instead of creating one */
+  existing?: Measurement | null;
+  /** controlled mode — lets a table drive one shared dialog */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
-  const { watches, measurementsFor, addMeasurement } = useStore();
+  const { watches, measurementsFor, addMeasurement, updateMeasurement } = useStore();
   const active = watches.filter((w) => !w.archived);
-  const [open, setOpen] = useState(false);
+  const [openState, setOpen] = useState(false);
+  const open = openProp ?? openState;
+  const editing = !!existing;
+
   const [form, setForm] = useState(() => ({
     watchId: watchId ?? active[0]?.id ?? "",
+    measuredAt: toLocalInput(new Date().toISOString()),
     referenceTime: nowHms(),
     watchTime: nowHms(),
     temperatureC: "",
@@ -205,25 +221,54 @@ export function MeasurementDialog({
     setForm((f) => ({ ...f, referenceTime: t, watchTime: t }));
   };
 
+  /** Load an existing reading into the form, exactly as recorded. */
+  const loadExisting = (m: Measurement) =>
+    setForm({
+      watchId: m.watchId,
+      measuredAt: toLocalInput(m.measuredAt),
+      referenceTime: m.referenceTime,
+      watchTime: m.watchTime,
+      temperatureC: m.temperatureC?.toString() ?? "",
+      position: (m.position ?? "on-wrist") as WatchPosition,
+      powerReservePct: m.powerReservePct?.toString() ?? "",
+      wornToday: m.wornToday,
+      timeAdjusted: !!m.timeAdjusted,
+      notes: m.notes ?? "",
+    });
+
+  // A parent can open this dialog by flipping `open` (the measurements table
+  // does exactly that). Radix only reports its own interactions, so the form
+  // has to be filled here or an edit would show blank defaults.
+  useEffect(() => {
+    if (open && existing) loadExisting(existing);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, existing?.id]);
+
   const handleOpenChange = (next: boolean) => {
     if (next) {
-      const t = nowHms();
-      setForm((f) => ({
-        ...f,
-        // The dialog stays mounted while the page's selected watch changes, so
-        // the target must be re-read on open — otherwise a measurement lands
-        // on whichever watch happened to be selected when the page first rendered.
-        watchId:
-          watchId ??
-          (active.some((w) => w.id === f.watchId) ? f.watchId : active[0]?.id ?? ""),
-        // the clock must read "now" when you open the form, not at page load
-        referenceTime: t,
-        watchTime: t,
-        // per-reading flags must not carry over from the previous entry
-        timeAdjusted: false,
-        notes: "",
-      }));
+      if (existing) {
+        loadExisting(existing);
+      } else {
+        const t = nowHms();
+        setForm((f) => ({
+          ...f,
+          // The dialog stays mounted while the page's selected watch changes, so
+          // the target must be re-read on open — otherwise a measurement lands
+          // on whichever watch happened to be selected when the page first rendered.
+          watchId:
+            watchId ??
+            (active.some((w) => w.id === f.watchId) ? f.watchId : active[0]?.id ?? ""),
+          // the clock must read "now" when you open the form, not at page load
+          measuredAt: toLocalInput(new Date().toISOString()),
+          referenceTime: t,
+          watchTime: t,
+          // per-reading flags must not carry over from the previous entry
+          timeAdjusted: false,
+          notes: "",
+        }));
+      }
     }
+    onOpenChange?.(next);
     setOpen(next);
   };
 
@@ -244,16 +289,22 @@ export function MeasurementDialog({
 
   const projectedSpd = useMemo(() => {
     if (offset == null || !prev) return null;
-    const gapDays = (Date.now() - +new Date(prev.measuredAt)) / 86_400_000;
+    // when editing, the reading being edited is its own predecessor's successor
+    if (editing && prev.id === existing?.id) return null;
+    const at = form.measuredAt ? +new Date(form.measuredAt) : Date.now();
+    const gapDays = (at - +new Date(prev.measuredAt)) / 86_400_000;
     if (gapDays < 0.04) return null;
     return (offset - prev.offsetSeconds) / gapDays;
-  }, [offset, prev]);
+  }, [offset, prev, editing, existing?.id, form.measuredAt]);
 
   const submit = () => {
     if (offset == null || !form.watchId) return;
-    const m: Omit<Measurement, "id"> = {
+    const measuredAt = form.measuredAt
+      ? new Date(form.measuredAt).toISOString()
+      : new Date().toISOString();
+    const fields = {
       watchId: form.watchId,
-      measuredAt: new Date().toISOString(),
+      measuredAt,
       referenceTime: normalizeTime(form.referenceTime),
       watchTime: normalizeTime(form.watchTime),
       offsetSeconds: offset,
@@ -264,8 +315,15 @@ export function MeasurementDialog({
       timeAdjusted: form.timeAdjusted || undefined,
       notes: form.notes || undefined,
     };
-    addMeasurement(m);
-    setOpen(false);
+
+    if (existing) {
+      updateMeasurement(existing.id, fields);
+      handleOpenChange(false);
+      return;
+    }
+
+    addMeasurement(fields as Omit<Measurement, "id">);
+    handleOpenChange(false);
     // clear the per-reading fields; timeAdjusted especially must not stick,
     // or every later measurement would be treated as a fresh baseline
     setForm((f) => ({
@@ -277,24 +335,36 @@ export function MeasurementDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger asChild>
-        {trigger ?? (
-          <Button>
-            <Plus className="h-4 w-4" /> Add measurement
-          </Button>
-        )}
-      </DialogTrigger>
-      <DialogContent title="New measurement">
+      {trigger !== null && (
+        <DialogTrigger asChild>
+          {trigger ?? (
+            <Button>
+              <Plus className="h-4 w-4" /> Add measurement
+            </Button>
+          )}
+        </DialogTrigger>
+      )}
+      <DialogContent title={editing ? "Edit measurement" : "New measurement"}>
         <div className="space-y-4">
-          <div>
-            <Label>Watch</Label>
-            <Select value={form.watchId} onChange={(e) => set("watchId", e.target.value)}>
-              {active.map((w) => (
-                <option key={w.id} value={w.id}>
-                  {w.brand} {w.model}
-                </option>
-              ))}
-            </Select>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Watch</Label>
+              <Select value={form.watchId} onChange={(e) => set("watchId", e.target.value)}>
+                {active.map((w) => (
+                  <option key={w.id} value={w.id}>
+                    {w.brand} {w.model}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <div>
+              <Label>Measured at</Label>
+              <Input
+                type="datetime-local" step="1"
+                value={form.measuredAt}
+                onChange={(e) => set("measuredAt", e.target.value)}
+              />
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -377,7 +447,9 @@ export function MeasurementDialog({
                 checked={form.timeAdjusted}
                 onCheckedChange={(v) => set("timeAdjusted", v)}
               />
-              <span className="text-sm font-medium">I corrected the time since the last reading</span>
+              <span className="text-sm font-medium">
+                {editing ? "Time was corrected before this reading" : "I corrected the time since the last reading"}
+              </span>
             </div>
             <p className="mt-1.5 text-[11px] leading-relaxed text-muted">
               {form.timeAdjusted
@@ -392,8 +464,13 @@ export function MeasurementDialog({
               placeholder="Optional notes…" className="min-h-14" />
           </div>
           <Button className="w-full" onClick={submit} disabled={offset == null || !form.watchId}>
-            Save measurement
+            {editing ? "Save changes" : "Save measurement"}
           </Button>
+          {editing && (
+            <p className="text-center text-[11px] text-faint">
+              Rates either side of this reading are recalculated from the new values.
+            </p>
+          )}
         </div>
       </DialogContent>
     </Dialog>
