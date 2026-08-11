@@ -9,14 +9,18 @@ import React, {
   createContext, useCallback, useContext, useEffect, useMemo, useRef, useState,
 } from "react";
 import type {
-  AppSettings, Insight, Measurement, Notification, ServiceRecord, Watch,
+  AppSettings, Insight, Measurement, Notification, ServiceRecord, Watch, WishlistItem,
 } from "./types";
-import { DEMO_WATCHES, DEMO_SERVICES, generateDemoMeasurements } from "./demo-data";
+import { DEMO_WATCHES, DEMO_SERVICES, DEMO_WISHLIST, generateDemoMeasurements } from "./demo-data";
 import { generateInsights, generateNotifications } from "./insights";
 import { detectCurrency, uid } from "./utils";
 import { getSupabase } from "./supabase/client";
 import * as repo from "./supabase/repo";
 import { mergeCollection, touch } from "./sync";
+import { findCatalogModel } from "./watch-catalog";
+
+/** Accent colours assigned to new watches, in order. */
+const ACCENTS = ["#059669", "#3b82f6", "#d97706", "#8b5cf6", "#ec4899"];
 
 const LS_KEY = "watchkeeper-v1";
 
@@ -35,6 +39,7 @@ interface PersistedState {
   watches: Watch[];
   measurements: Measurement[];
   services: ServiceRecord[];
+  wishlist: WishlistItem[];
   settings: AppSettings;
   dismissedNotifications: Dismissal[];
   demo: boolean;
@@ -79,6 +84,12 @@ interface StoreValue {
   deleteMeasurement: (id: string) => void;
   addService: (s: Omit<ServiceRecord, "id">) => ServiceRecord;
   deleteService: (id: string) => void;
+  wishlist: WishlistItem[];
+  addWishlistItem: (w: Omit<WishlistItem, "id" | "addedAt">) => WishlistItem;
+  updateWishlistItem: (id: string, patch: Partial<WishlistItem>) => void;
+  deleteWishlistItem: (id: string) => void;
+  /** Create a real watch from a wishlist item and mark the item acquired. */
+  moveWishlistToCollection: (id: string, purchase?: { price?: number; date?: string }) => Watch | null;
   updateSettings: (patch: Partial<AppSettings>) => void;
   dismissNotification: (id: string) => void;
   resetDemoData: () => void;
@@ -137,6 +148,7 @@ function freshDemoState(): PersistedState {
     watches: DEMO_WATCHES.map((w) => ({ ...w, currency })),
     measurements: generateDemoMeasurements(),
     services: DEMO_SERVICES.map((s) => ({ ...s, currency })),
+    wishlist: DEMO_WISHLIST.map((w) => ({ ...w, currency })),
     settings: { ...DEFAULT_SETTINGS, currency },
     dismissedNotifications: [],
     demo: true,
@@ -246,11 +258,13 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           watches: remote.watches,
           measurements: remote.measurements,
           services: remote.services,
+          wishlist: remote.wishlist,
           demo: false,
           syncedIds: [
             ...remote.watches.map((r) => r.id),
             ...remote.measurements.map((r) => r.id),
             ...remote.services.map((r) => r.id),
+            ...remote.wishlist.map((r) => r.id),
           ],
           lastSyncedAt: new Date().toISOString(),
         }));
@@ -262,6 +276,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       const w = mergeCollection(current.watches, remote.watches, syncedIds);
       const m = mergeCollection(current.measurements, remote.measurements, syncedIds);
       const s = mergeCollection(current.services, remote.services, syncedIds);
+      const wl = mergeCollection(current.wishlist ?? [], remote.wishlist, syncedIds);
 
       // Upload what the cloud lacks or has an older copy of. Do this before
       // committing so a failure leaves local data exactly as it was.
@@ -269,6 +284,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         watches: w.toUpload as Watch[],
         measurements: m.toUpload as Measurement[],
         services: s.toUpload as ServiceRecord[],
+        wishlist: wl.toUpload as WishlistItem[],
       });
 
       const at = new Date().toISOString();
@@ -276,12 +292,14 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         ...w.merged.map((r) => r.id),
         ...m.merged.map((r) => r.id),
         ...s.merged.map((r) => r.id),
+        ...wl.merged.map((r) => r.id),
       ];
       mutate((st) => ({
         ...st,
         watches: w.merged as Watch[],
         measurements: m.merged as Measurement[],
         services: s.merged as ServiceRecord[],
+        wishlist: wl.merged as WishlistItem[],
         demo: false,
         syncedIds: allIds,
         lastSyncedAt: at,
@@ -401,6 +419,67 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       deleteService: (id) => {
         mutate((st) => ({ ...st, services: st.services.filter((x) => x.id !== id) }));
         repo.deleteService(id);
+      },
+      wishlist: s.wishlist ?? [],
+      addWishlistItem: (w) => {
+        const created: WishlistItem = touch({
+          ...w, id: uid(), addedAt: new Date().toISOString(),
+        });
+        mutate((st) => ({ ...st, wishlist: [...(st.wishlist ?? []), created] }));
+        repo.upsertWishlistItem(created);
+        return created;
+      },
+      updateWishlistItem: (id, patch) => {
+        const cur = (s.wishlist ?? []).find((x) => x.id === id);
+        const next = cur ? touch({ ...cur, ...patch }) : null;
+        mutate((st) => ({
+          ...st,
+          wishlist: (st.wishlist ?? []).map((x) => (x.id === id ? touch({ ...x, ...patch }) : x)),
+        }));
+        if (next) repo.upsertWishlistItem(next);
+      },
+      deleteWishlistItem: (id) => {
+        mutate((st) => ({ ...st, wishlist: (st.wishlist ?? []).filter((x) => x.id !== id) }));
+        repo.deleteWishlistItem(id);
+      },
+      moveWishlistToCollection: (id, purchase) => {
+        const item = (s.wishlist ?? []).find((x) => x.id === id);
+        if (!item) return null;
+        // Carry across everything already known, and fill the movement specs
+        // from the catalog so the new watch is graded correctly from day one.
+        const known = findCatalogModel(item.brand, item.model);
+        const watch: Watch = touch({
+          id: uid(),
+          brand: item.brand,
+          model: item.model,
+          reference: item.reference ?? known?.reference,
+          movementType: item.movementType ?? known?.movementType ?? "automatic",
+          caliber: item.caliber ?? known?.caliber,
+          beatRate: known?.beatRate,
+          powerReserveHours: known?.powerReserveHours,
+          jewels: known?.jewels,
+          coscCertified: known?.cosc ?? false,
+          purchaseDate: purchase?.date ?? new Date().toISOString().slice(0, 10),
+          purchasePrice: purchase?.price ?? item.targetPrice,
+          currentValue: purchase?.price ?? item.targetPrice,
+          currency: item.currency,
+          accentColor: ACCENTS[(s.watches.length + 1) % ACCENTS.length],
+          notes: item.notes,
+        });
+        const acquired = touch({
+          ...item,
+          status: "acquired" as const,
+          acquiredWatchId: watch.id,
+        });
+        mutate((st) => ({
+          ...st,
+          demo: false,
+          watches: [...st.watches, watch],
+          wishlist: (st.wishlist ?? []).map((x) => (x.id === id ? acquired : x)),
+        }));
+        repo.upsertWatch(watch);
+        repo.upsertWishlistItem(acquired);
+        return watch;
       },
       updateSettings: (patch) => {
         mutate((st) => {

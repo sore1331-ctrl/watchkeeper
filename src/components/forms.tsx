@@ -5,7 +5,10 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Plus } from "lucide-react";
 import { useStore } from "@/lib/store";
-import type { Measurement, MovementType, ServiceRecord, ServiceType, Watch, WatchPosition } from "@/lib/types";
+import type {
+  Measurement, MovementType, ServiceRecord, ServiceType, Watch, WatchPosition,
+  WishlistItem, WishlistPriority, WishlistStatus,
+} from "@/lib/types";
 import { Button, Dialog, DialogContent, DialogTrigger, Input, Label, Select, Switch, Textarea } from "./ui";
 import {
   filterSuggestions, modelsForBrand, specForCaliber, WATCH_BRANDS, type CatalogModel,
@@ -712,6 +715,201 @@ export function WatchDialog({
           <div><Label>Notes</Label><Textarea value={form.notes} onChange={(e) => set("notes", e.target.value)} className="min-h-14" /></div>
           <Button className="w-full" onClick={submit} disabled={!form.brand || !form.model}>
             {existing ? "Save changes" : "Add watch"}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Wishlist form ───────────────────────────────────────────────────────────
+const WISHLIST_STATUSES: { value: WishlistStatus; label: string }[] = [
+  { value: "wanted", label: "Wanted" },
+  { value: "watching", label: "Watching the market" },
+  { value: "reserved", label: "Reserved / on hold" },
+  { value: "passed", label: "Passed on it" },
+];
+
+export function WishlistDialog({
+  existing, trigger, open: openProp, onOpenChange,
+}: {
+  existing?: WishlistItem | null;
+  trigger?: React.ReactNode;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+}) {
+  const { addWishlistItem, updateWishlistItem, settings, watches } = useStore();
+  const [openState, setOpen] = useState(false);
+  const open = openProp ?? openState;
+  const editing = !!existing;
+
+  const blank = () => ({
+    brand: "", model: "", reference: "",
+    movementType: "" as MovementType | "",
+    caliber: "",
+    targetPrice: "",
+    currency: settings.currency,
+    priority: "medium" as WishlistPriority,
+    status: "wanted" as WishlistStatus,
+    url: "", notes: "",
+  });
+  const [form, setForm] = useState(blank);
+  const set = <K extends keyof ReturnType<typeof blank>>(
+    k: K, v: ReturnType<typeof blank>[K]
+  ) => setForm((f) => ({ ...f, [k]: v }));
+
+  const load = (w: WishlistItem) =>
+    setForm({
+      brand: w.brand, model: w.model, reference: w.reference ?? "",
+      movementType: w.movementType ?? "", caliber: w.caliber ?? "",
+      targetPrice: w.targetPrice?.toString() ?? "",
+      currency: w.currency, priority: w.priority, status: w.status,
+      url: w.url ?? "", notes: w.notes ?? "",
+    });
+
+  useEffect(() => {
+    if (!open) return;
+    if (existing) load(existing);
+    else setForm(blank());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, existing?.id]);
+
+  const handleOpenChange = (next: boolean) => {
+    onOpenChange?.(next);
+    setOpen(next);
+  };
+
+  // suggestions, same catalog the collection uses
+  const brandOptions = useMemo(() => {
+    const own = watches.map((w) => w.brand);
+    return [...new Set([...WATCH_BRANDS, ...own])].sort((a, b) => a.localeCompare(b));
+  }, [watches]);
+  const brandSuggestions = useMemo(
+    () => filterSuggestions(form.brand, brandOptions).map((label) => ({ label })),
+    [form.brand, brandOptions]
+  );
+  const brandModels = useMemo(() => modelsForBrand(form.brand), [form.brand]);
+  const modelSuggestions = useMemo(
+    () =>
+      filterSuggestions(form.model, brandModels.map((m) => m.model)).map((label) => {
+        const m = brandModels.find((x) => x.model === label);
+        return { label, sub: m?.reference ?? m?.caliber };
+      }),
+    [form.model, brandModels]
+  );
+
+  const applyModel = (label: string) => {
+    const m = brandModels.find((x) => x.model === label);
+    if (!m) return;
+    setForm((f) => ({
+      ...f,
+      model: label,
+      reference: f.reference || (m.reference ?? ""),
+      movementType: f.movementType || m.movementType,
+      caliber: f.caliber || (m.caliber ?? ""),
+    }));
+  };
+
+  // what this movement is built to, so you know before you buy
+  const spec = useMemo(
+    () => specForCaliber(form.caliber || undefined, false),
+    [form.caliber]
+  );
+
+  const submit = () => {
+    if (!form.brand || !form.model) return;
+    const payload = {
+      brand: form.brand,
+      model: form.model,
+      reference: form.reference || undefined,
+      movementType: (form.movementType || undefined) as MovementType | undefined,
+      caliber: form.caliber || undefined,
+      targetPrice: form.targetPrice ? +form.targetPrice : undefined,
+      currency: form.currency,
+      priority: form.priority,
+      status: form.status,
+      url: form.url || undefined,
+      notes: form.notes || undefined,
+    };
+    if (existing) updateWishlistItem(existing.id, payload);
+    else addWishlistItem(payload);
+    handleOpenChange(false);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      {trigger !== null && (
+        <DialogTrigger asChild>
+          {trigger ?? (
+            <Button><Plus className="h-4 w-4" /> Add to wishlist</Button>
+          )}
+        </DialogTrigger>
+      )}
+      <DialogContent title={editing ? "Edit wishlist item" : "Add to wishlist"}>
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Brand *</Label>
+              <AutocompleteInput
+                value={form.brand} onChange={(v) => set("brand", v)}
+                suggestions={brandSuggestions} placeholder="Tudor"
+              />
+            </div>
+            <div>
+              <Label>Model *</Label>
+              <AutocompleteInput
+                value={form.model} onChange={(v) => set("model", v)}
+                onPick={applyModel} suggestions={modelSuggestions}
+                placeholder="Black Bay 58"
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div><Label>Reference</Label><Input value={form.reference} onChange={(e) => set("reference", e.target.value)} /></div>
+            <div><Label>Caliber</Label><Input value={form.caliber} onChange={(e) => set("caliber", e.target.value)} /></div>
+          </div>
+          {spec && (
+            <p className="-mt-2 text-[11px] text-faint">
+              This movement is built to {spec.min > 0 ? "+" : ""}{spec.min}/{spec.max > 0 ? "+" : ""}{spec.max} s/d
+              {" "}({spec.source}) — what you should expect once it&apos;s yours.
+            </p>
+          )}
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <Label>Currency</Label>
+              <Select value={form.currency} onChange={(e) => set("currency", e.target.value)}>
+                {CURRENCIES.map((c) => <option key={c.code} value={c.code}>{c.code}</option>)}
+              </Select>
+            </div>
+            <div><Label>Target price</Label><Input type="number" value={form.targetPrice} onChange={(e) => set("targetPrice", e.target.value)} /></div>
+            <div>
+              <Label>Priority</Label>
+              <Select value={form.priority} onChange={(e) => set("priority", e.target.value as WishlistPriority)}>
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+              </Select>
+            </div>
+          </div>
+          <div>
+            <Label>Status</Label>
+            <Select value={form.status} onChange={(e) => set("status", e.target.value as WishlistStatus)}>
+              {WISHLIST_STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+            </Select>
+          </div>
+          <div>
+            <Label>Link</Label>
+            <Input value={form.url} onChange={(e) => set("url", e.target.value)}
+              placeholder="https://… a listing or reference page" />
+          </div>
+          <div>
+            <Label>Notes</Label>
+            <Textarea value={form.notes} onChange={(e) => set("notes", e.target.value)}
+              placeholder="Condition wanted, where you saw it, what you're waiting for…"
+              className="min-h-14" />
+          </div>
+          <Button className="w-full" onClick={submit} disabled={!form.brand || !form.model}>
+            {editing ? "Save changes" : "Add to wishlist"}
           </Button>
         </div>
       </DialogContent>

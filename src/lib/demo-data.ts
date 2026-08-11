@@ -2,7 +2,7 @@
 // Generates a realistic collection with distinct movement personalities so the
 // analytics, insights and anomaly detection all have something real to show.
 
-import type { Measurement, ServiceRecord, Watch, WatchPosition } from "./types";
+import type { Measurement, ServiceRecord, Watch, WatchPosition, WishlistItem } from "./types";
 
 // Mulberry32 PRNG — deterministic across sessions
 function rng(seed: number) {
@@ -101,6 +101,31 @@ export const DEMO_SERVICES: ServiceRecord[] = [
     id: "s5", watchId: "w-nomos", date: "2024-02-14", type: "regulation",
     watchmaker: "Nomos (factory, at purchase)", cost: 0, currency: "EUR",
     notes: "Factory regulation in 6 positions.",
+  },
+];
+
+export const DEMO_WISHLIST: WishlistItem[] = [
+  {
+    id: "wl-bb58", brand: "Tudor", model: "Black Bay 58", reference: "M79030N",
+    movementType: "automatic", caliber: "MT5402",
+    targetPrice: 2900, currency: "EUR", priority: "high", status: "watching",
+    notes: "Waiting for a good pre-owned example with box and papers.",
+    addedAt: "2026-05-02T10:00:00.000Z",
+  },
+  {
+    id: "wl-explorer", brand: "Rolex", model: "Explorer 36", reference: "124270",
+    movementType: "automatic", caliber: "3230",
+    targetPrice: 8000, currency: "EUR", priority: "medium", status: "wanted",
+    notes: "The one to save for.",
+    addedAt: "2026-03-18T10:00:00.000Z",
+  },
+  {
+    id: "wl-prx", brand: "Tissot", model: "PRX Powermatic 80",
+    reference: "T137.407.11.041.00",
+    movementType: "automatic", caliber: "Powermatic 80.111",
+    targetPrice: 550, currency: "EUR", priority: "low", status: "wanted",
+    notes: "Everyday knockabout on the bracelet.",
+    addedAt: "2026-06-24T10:00:00.000Z",
   },
 ];
 

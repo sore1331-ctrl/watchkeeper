@@ -6,7 +6,9 @@
 // Every function is a no-op when Supabase isn't configured or nobody is
 // signed in — the app stays fully usable in local-only mode.
 
-import type { Measurement, MovementType, ServiceRecord, ServiceType, Watch, WatchPosition } from "../types";
+import type {
+  Measurement, MovementType, ServiceRecord, ServiceType, Watch, WatchPosition, WishlistItem,
+} from "../types";
 import { getSupabase } from "./client";
 
 type Client = NonNullable<ReturnType<typeof getSupabase>>;
@@ -92,6 +94,31 @@ const serviceRow = (s: ServiceRecord, userId: string) => ({
   updated_at: s.updatedAt ?? new Date().toISOString(),
 });
 
+const wishlistRow = (w: WishlistItem, userId: string) => ({
+  id: w.id, user_id: userId,
+  brand: w.brand, model: w.model, reference: w.reference ?? null,
+  movement_type: w.movementType ?? null, caliber: w.caliber ?? null,
+  target_price: w.targetPrice ?? null, currency: w.currency,
+  priority: w.priority, status: w.status,
+  url: w.url ?? null, notes: w.notes ?? null,
+  added_at: w.addedAt, acquired_watch_id: w.acquiredWatchId ?? null,
+  updated_at: w.updatedAt ?? new Date().toISOString(),
+});
+
+const toWishlist = (r: any): WishlistItem => ({
+  id: r.id, brand: r.brand, model: r.model,
+  reference: r.reference ?? undefined,
+  movementType: (r.movement_type ?? undefined) as MovementType | undefined,
+  caliber: r.caliber ?? undefined,
+  targetPrice: r.target_price == null ? undefined : Number(r.target_price),
+  currency: r.currency ?? "GBP",
+  priority: r.priority as WishlistItem["priority"],
+  status: r.status as WishlistItem["status"],
+  url: r.url ?? undefined, notes: r.notes ?? undefined,
+  addedAt: r.added_at, acquiredWatchId: r.acquired_watch_id ?? undefined,
+  updatedAt: r.updated_at ?? undefined,
+});
+
 const toService = (r: any): ServiceRecord => ({
   id: r.id, watchId: r.watch_id, date: r.date, type: r.type as ServiceType,
   watchmaker: r.watchmaker ?? "—", cost: Number(r.cost ?? 0), currency: r.currency ?? "EUR",
@@ -142,10 +169,23 @@ export async function deleteService(id: string) {
 
 // ── bulk sync ───────────────────────────────────────────────────────────────
 
+export async function upsertWishlistItem(w: WishlistItem) {
+  const ctx = await withUser();
+  if (!ctx) return;
+  await ctx.sb.from("wk_wishlist").upsert(wishlistRow(w, ctx.userId));
+}
+
+export async function deleteWishlistItem(id: string) {
+  const ctx = await withUser();
+  if (!ctx) return;
+  await ctx.sb.from("wk_wishlist").delete().eq("id", id);
+}
+
 export interface CloudSnapshot {
   watches: Watch[];
   measurements: Measurement[];
   services: ServiceRecord[];
+  wishlist: WishlistItem[];
 }
 
 /** Everything this user has in the cloud. Throws so the caller can surface it. */
@@ -166,17 +206,20 @@ export async function pullAll(): Promise<CloudSnapshot | null> {
     if (!data || data.length < PAGE) break;
   }
 
-  const [w, s] = await Promise.all([
+  const [w, s, wl] = await Promise.all([
     ctx.sb.from("wk_watches").select("*"),
     ctx.sb.from("wk_services").select("*"),
+    ctx.sb.from("wk_wishlist").select("*"),
   ]);
   if (w.error) throw new Error(w.error.message);
   if (s.error) throw new Error(s.error.message);
+  if (wl.error) throw new Error(wl.error.message);
 
   return {
     watches: (w.data ?? []).map(toWatch),
     measurements,
     services: (s.data ?? []).map(toService),
+    wishlist: (wl.data ?? []).map(toWishlist),
   };
 }
 
@@ -198,8 +241,9 @@ export async function pushAll(snapshot: Partial<CloudSnapshot>): Promise<void> {
     }
   };
 
-  // watches first — measurements and services reference them
+  // watches first — measurements, services and acquired wishlist items reference them
   await send("wk_watches", snapshot.watches ?? [], watchRow);
   await send("wk_measurements", snapshot.measurements ?? [], measurementRow);
   await send("wk_services", snapshot.services ?? [], serviceRow);
+  await send("wk_wishlist", snapshot.wishlist ?? [], wishlistRow);
 }

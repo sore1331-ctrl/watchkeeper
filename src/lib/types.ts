@@ -120,6 +120,30 @@ export interface Watch extends Synced {
   archived?: boolean;
 }
 
+export type WishlistStatus = "wanted" | "watching" | "reserved" | "acquired" | "passed";
+export type WishlistPriority = "high" | "medium" | "low";
+
+/** A watch you don't own yet. Becomes a Watch when you buy it. */
+export interface WishlistItem extends Synced {
+  id: string;
+  brand: string;
+  model: string;
+  reference?: string;
+  movementType?: MovementType;
+  caliber?: string;
+  /** what you're willing to pay / what you've seen it for */
+  targetPrice?: number;
+  currency: string;
+  priority: WishlistPriority;
+  status: WishlistStatus;
+  /** listing or reference link */
+  url?: string;
+  notes?: string;
+  addedAt: string;
+  /** set once the item has been moved into the collection */
+  acquiredWatchId?: string;
+}
+
 export interface Notification {
   id: string;
   watchId?: string;

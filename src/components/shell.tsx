@@ -4,7 +4,7 @@ import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  Bell, ChartSpline, Cloud, CloudOff, FileText, GitCompareArrows, LayoutDashboard,
+  Bell, ChartSpline, Cloud, CloudOff, FileText, GitCompareArrows, Heart, LayoutDashboard,
   Lightbulb, Moon, RefreshCw, Settings, Sun, UserRound, Watch as WatchIcon, Wrench, X,
 } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
@@ -12,16 +12,18 @@ import { cn } from "@/lib/utils";
 import { useStore } from "@/lib/store";
 import { Badge } from "./ui";
 
+/** `mobile` marks the five shown in the bottom bar on small screens. */
 const NAV = [
-  { href: "/", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/watches", label: "Watches", icon: WatchIcon },
-  { href: "/analytics", label: "Analytics", icon: ChartSpline },
-  { href: "/compare", label: "Compare", icon: GitCompareArrows },
-  { href: "/insights", label: "Insights", icon: Lightbulb },
-  { href: "/services", label: "Service", icon: Wrench },
-  { href: "/reports", label: "Reports", icon: FileText },
-  { href: "/account", label: "Account", icon: UserRound },
-  { href: "/settings", label: "Settings", icon: Settings },
+  { href: "/", label: "Dashboard", icon: LayoutDashboard, mobile: true },
+  { href: "/watches", label: "Watches", icon: WatchIcon, mobile: true },
+  { href: "/wishlist", label: "Wishlist", icon: Heart, mobile: false },
+  { href: "/analytics", label: "Analytics", icon: ChartSpline, mobile: true },
+  { href: "/compare", label: "Compare", icon: GitCompareArrows, mobile: false },
+  { href: "/insights", label: "Insights", icon: Lightbulb, mobile: true },
+  { href: "/services", label: "Service", icon: Wrench, mobile: true },
+  { href: "/reports", label: "Reports", icon: FileText, mobile: false },
+  { href: "/account", label: "Account", icon: UserRound, mobile: false },
+  { href: "/settings", label: "Settings", icon: Settings, mobile: false },
 ];
 
 function useTheme() {
@@ -206,7 +208,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
         {/* Bottom nav — mobile */}
         <nav className="glass fixed inset-x-0 bottom-0 z-40 flex justify-around border-t border-border-token py-1.5 md:hidden">
-          {NAV.slice(0, 5).map(({ href, label, icon: Icon }) => {
+          {NAV.filter((n) => n.mobile).map(({ href, label, icon: Icon }) => {
             const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
             return (
               <Link
