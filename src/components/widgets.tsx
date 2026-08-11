@@ -144,11 +144,13 @@ export function GradeBadge({
 }
 
 export function HealthBadge({
-  label, count, explain = true,
+  label, count, explain = true, reason,
 }: {
   label: HealthLabel | null;
   count?: number;
   explain?: boolean;
+  /** the specific finding behind this verdict, preferred over the generic text */
+  reason?: string;
 }) {
   if (!label) {
     if (count != null && count < MIN_MEASUREMENTS_FOR_GRADE)
@@ -164,7 +166,7 @@ export function HealthBadge({
           <p className="font-semibold" style={{ color: HEALTH_COLORS[label] }}>
             {label}
           </p>
-          <p className="mt-1 text-muted">{healthExplanation(label)}</p>
+          <p className="mt-1 text-muted">{reason ?? healthExplanation(label)}</p>
         </>
       }
     >
@@ -287,6 +289,41 @@ export function ConditionBreakdown({
         {conditions.explained > 0.25 &&
           ` Position alone explains ${Math.round(conditions.explained * 100)}% of the total variance.`}
       </p>
+
+      <details className="group rounded-lg border border-border-token bg-surface-2/40 p-3">
+        <summary className="cursor-pointer list-none text-xs font-semibold text-muted hover:text-foreground">
+          Why does position change the rate?
+          <span className="ml-1 text-faint group-open:hidden">Show</span>
+        </summary>
+        <div className="mt-2 space-y-2 text-xs leading-relaxed text-muted">
+          <p>
+            Gravity acts on the balance wheel, so a mechanical watch keeps a different
+            rate in every orientation. Lying flat (dial up or dial down) the balance
+            staff turns on the tip of its pivot against a flat cap jewel — very little
+            friction, so amplitude is high and the watch usually runs faster. Stood on
+            edge (any crown position) the pivot rests against the side of its jewel
+            hole, friction rises, amplitude falls, and any tiny imbalance in the balance
+            rim now works with or against gravity on every swing.
+          </p>
+          <p>
+            A difference of several seconds a day between positions is entirely normal
+            and is <span className="font-medium text-foreground">not</span> a fault.
+            Minimising it is precisely the work described by &ldquo;adjusted in five
+            positions&rdquo;: a chronometer has had that attention, a workhorse movement
+            typically has not, so a wider spread is expected of it by design.
+          </p>
+          <p>
+            This is also why resting a watch in a chosen position overnight is a real
+            technique — parking a fast watch in whichever position runs slowest can
+            cancel out much of the daily gain.
+          </p>
+          <p className="text-faint">
+            WatchKeeper groups your readings by the position each interval was spent in,
+            so this spread never counts against stability or triggers a warning. Only
+            scatter <span className="font-medium">within</span> one position does.
+          </p>
+        </div>
+      </details>
     </div>
   );
 }

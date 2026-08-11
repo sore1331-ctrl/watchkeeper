@@ -279,13 +279,18 @@ export default function WatchDetailPage() {
               <div className="flex flex-col gap-6 md:flex-row md:items-center">
                 <div className="flex flex-col items-center gap-2">
                   <HealthRing score={health.score} label={health.label} />
-                  <HealthBadge label={health.label} />
+                  <HealthBadge label={health.label} reason={health.reason} />
                 </div>
                 <div className="flex-1 space-y-2.5">
                   {health.components.map((c) => (
                     <ScoreBar key={c.name} name={c.name} score={c.score} weight={c.weight} />
                   ))}
-                  <p className="pt-1 text-xs text-muted">{healthExplanation(health.label, !!spec)}</p>
+                  <p className="pt-1 text-xs text-muted">{health.reason}</p>
+                  <p className="text-[11px] text-faint">
+                    Accuracy and stability are both judged against what this movement is
+                    built to, and differences between resting positions are excluded —
+                    see &ldquo;Rate by position&rdquo; above.
+                  </p>
                 </div>
               </div>
             </Card>

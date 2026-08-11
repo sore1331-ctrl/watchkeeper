@@ -193,6 +193,29 @@ export interface HealthResult {
   score: number; // 0-100
   label: HealthLabel;
   components: { name: string; score: number; weight: number }[];
+  /** why this label, in plain language */
+  reason: string;
+}
+
+/**
+ * Day-to-day scatter a healthy movement of this class shows, in s/d.
+ *
+ * Consistency scales with how finely a movement was built and adjusted: a
+ * chronometer held to a 10-second band is expected to repeat within a fraction
+ * of a second, while a workhorse built to a 40-second band will wander several
+ * seconds and still be perfectly healthy. Judging both on one absolute curve
+ * marks honest budget movements down for behaving exactly as designed.
+ */
+export function expectedScatter(spec: RateSpec | null): number {
+  if (!spec) return 3; // unknown movement — assume a mid-range mechanical
+  return Math.max(0.8, (spec.max - spec.min) / 8);
+}
+
+/** 0–100 for observed scatter, relative to what this movement should show. */
+export function stabilityScoreFor(sd: number, spec: RateSpec | null): number {
+  const ratio = sd / expectedScatter(spec);
+  // at or under half the expected scatter → 100; at 3× → 0
+  return Math.max(0, Math.min(100, (100 * (3 - ratio)) / 2.5));
 }
 
 /**
@@ -221,7 +244,11 @@ export function healthScore(
         return Math.max(0, Math.min(100, d <= 1 ? 100 - 30 * d : Math.max(0, 70 - 40 * (d - 1))));
       })()
     : (stats.performanceScore ?? 50);
-  const stab = stats.stabilityScore ?? 50;
+  // Stability is judged the same way: against what this movement should show,
+  // not against a chronometer. Positional differences are already excluded —
+  // this is scatter within a single position.
+  const sd = stats.adjustedStdDev ?? stats.stdDev ?? 0;
+  const stab = stabilityScoreFor(sd, spec);
   const cons = stats.consistencyIndex ?? 50;
 
   // Drift: |accuracyTrend| of 0 s/d/day → 100; 0.15 → 0
@@ -263,18 +290,37 @@ export function healthScore(
   const rateOutOfSpec = spec
     ? stats.avgSpd < spec.min || stats.avgSpd > spec.max
     : Math.abs(stats.avgSpd) > 20;
-  // Instability is only actionable once there is enough history to trust it.
-  const unstable = stats.count >= 14 && stab < 40;
+  // Instability has to clear a real bar: enough history, and scatter well
+  // beyond what this class of movement normally shows — not merely worse than
+  // a chronometer would manage.
+  const expected = expectedScatter(spec);
+  const unstable = stats.gradableCount >= 14 && sd > expected * 2;
+
+  const sdText = `±${sd.toFixed(1)} s/d within a single position (typical for this movement: ±${expected.toFixed(1)})`;
 
   let label: HealthLabel;
-  if (rateOutOfSpec && unstable) label = "Needs Service";
-  else if (rateOutOfSpec) label = "Needs Regulation";
-  else if (unstable) label = "Needs Service";
-  else if (score >= 85) label = "Excellent";
-  else if (score >= 70) label = "Very Good";
-  else label = "Good";
+  let reason: string;
+  if (rateOutOfSpec && unstable) {
+    label = "Needs Service";
+    reason = `Running outside its tolerance and scattering ${sdText}. Both together point at the movement rather than the regulation.`;
+  } else if (rateOutOfSpec) {
+    label = "Needs Regulation";
+    reason = spec
+      ? `The average rate sits outside the ${fmtBand(spec)} this movement is built to. Regulation adjusts exactly this; nothing here suggests a fault.`
+      : `The average rate is a long way from zero, judged on a generic scale because no tolerance is set for this caliber.`;
+  } else if (unstable) {
+    label = "Needs Service";
+    reason = `The rate is within tolerance, but it scatters ${sdText}. Repeatability that poor within one position usually means low amplitude, and regulation cannot fix it.`;
+  } else {
+    if (score >= 85) label = "Excellent";
+    else if (score >= 70) label = "Very Good";
+    else label = "Good";
+    reason = spec
+      ? `Running within its ${fmtBand(spec)} tolerance and repeating to ${sdText}. Nothing needs doing — the score reflects how far from the centre of spec it sits and how long since it was serviced, not a fault.`
+      : `Nothing here needs attention. Set this caliber's tolerance in the profile for a sharper verdict.`;
+  }
 
-  return { score, label, components };
+  return { score, label, components, reason };
 }
 
 export const HEALTH_COLORS: Record<HealthLabel, string> = {

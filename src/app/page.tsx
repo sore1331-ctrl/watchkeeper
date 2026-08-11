@@ -103,7 +103,8 @@ export default function DashboardPage() {
         <StatCard label="Avg daily rate" value={fmtSpd(stats.avgSpd)}
           sub={`median ${fmtSpd(stats.medianSpd)}`} delay={0.1} />
         <StatCard label="Movement health" value={health ? `${health.score}` : "—"}
-          sub={<HealthBadge label={health?.label ?? null} count={stats.gradableCount} />} delay={0.15} />
+          sub={<HealthBadge label={health?.label ?? null} count={stats.gradableCount}
+            reason={health?.reason} />} delay={0.15} />
         <StatCard label="Weekly variance" value={stats.weeklyVariance?.toFixed(2) ?? "—"}
           sub="s²/d, last 7 days" delay={0.2} />
         <StatCard label="Monthly variance" value={stats.monthlyVariance?.toFixed(2) ?? "—"}
@@ -144,8 +145,8 @@ export default function DashboardPage() {
           {health ? (
             <>
               <HealthRing score={health.score} label={health.label} />
-              <HealthBadge label={health.label} />
-              <p className="text-xs text-muted">{healthExplanation(health.label, !!spec)}</p>
+              <HealthBadge label={health.label} reason={health.reason} />
+              <p className="text-xs text-muted">{health.reason}</p>
             </>
           ) : (
             <>
