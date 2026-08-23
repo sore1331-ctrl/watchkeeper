@@ -249,17 +249,42 @@ export function healthScore(
   // this is scatter within a single position.
   const sd = stats.adjustedStdDev ?? stats.stdDev ?? 0;
   const stab = stabilityScoreFor(sd, spec);
-  const cons = stats.consistencyIndex ?? 50;
+  const expected = expectedScatter(spec);
 
-  // Drift: |accuracyTrend| of 0 s/d/day → 100; 0.15 → 0
-  const drift = Math.max(0, 100 - Math.abs(stats.accuracyTrend ?? 0) * 667);
+  // Consistency: how many readings land inside the movement's normal scatter.
+  // (The old measure — share within one standard deviation — was ~68% for any
+  // well-behaved data by definition, so it scored every watch the same.)
+  // Deviations are taken from each reading's own position where possible, so a
+  // night spent crown-down is not counted as an inconsistent reading.
+  const deviations = stats.conditions?.reliable
+    ? stats.conditions.residuals.map((r) => Math.abs(r.value))
+    : stats.samples.map((s) => Math.abs(s.spd - stats.avgSpd!));
+  const cons = deviations.length
+    ? (100 * deviations.filter((d) => d <= expected * 2).length) / deviations.length
+    : 50;
 
-  // Service age: quartz uses battery age; mechanical target 5y interval
-  let serviceAge = 70; // unknown default
-  const since = daysSince(lastServiceDate(services) ?? watch.purchaseDate ?? null);
-  if (since != null) {
-    const intervalDays = watch.movementType === "quartz" ? 365 * 8 : 365 * 5;
-    serviceAge = Math.max(0, Math.min(100, 100 * (1 - since / intervalDays)));
+  // Drift: is the rate itself moving? Judged against the movement's own
+  // scatter — a change of a few s/d per month is noise on a workhorse and a
+  // red flag on a chronometer. Too few readings to tell → stay neutral rather
+  // than punish a short history, where the slope is mostly noise.
+  const driftPerMonth = Math.abs(stats.accuracyTrend ?? 0) * 30;
+  const drift =
+    stats.samples.length < 10
+      ? 75
+      : Math.max(0, Math.min(100, 100 * (1 - driftPerMonth / (expected * 2))));
+
+  // Service age. A real service record is authoritative; failing that, the
+  // purchase date stands in — "never serviced since bought" is the relevant
+  // fact for a watch bought new, but it is weaker evidence, so it can't sink
+  // the score as far.
+  const realService = lastServiceDate(services);
+  const sinceService = daysSince(realService ?? watch.purchaseDate ?? null);
+  const intervalYears = watch.movementType === "quartz" ? 8 : 7;
+  const intervalDays = 365 * intervalYears;
+  let serviceAge = 50; // nothing recorded — mildly pessimistic, not damning
+  if (sinceService != null) {
+    const raw = 100 * (1 - sinceService / intervalDays);
+    serviceAge = Math.max(realService ? 0 : 20, Math.min(100, raw));
   }
 
   // Wear regularity — automatics like being worn; extremes are fine for quartz
@@ -289,18 +314,27 @@ export function healthScore(
   // A watch that simply runs off-centre but inside tolerance needs neither.
   const rateOutOfSpec = spec
     ? stats.avgSpd < spec.min || stats.avgSpd > spec.max
-    : Math.abs(stats.avgSpd) > 20;
+    // No published tolerance: a quartz movement drifting seconds a day is
+    // already broken, while a mechanical at 15 s/d may be entirely normal.
+    : Math.abs(stats.avgSpd) > (watch.movementType === "quartz" ? 2 : 20);
   // Instability has to clear a real bar: enough history, and scatter well
   // beyond what this class of movement normally shows — not merely worse than
   // a chronometer would manage.
-  const expected = expectedScatter(spec);
   const unstable = stats.gradableCount >= 14 && sd > expected * 2;
+  // Time alone is a reason for a service, and it is the one thing the phrase
+  // literally means. Only claimed on a real service record, since a purchase
+  // date says nothing about work done before you owned it.
+  const overdueYears = realService && sinceService != null ? sinceService / 365 : null;
+  const serviceOverdue = overdueYears != null && overdueYears > intervalYears;
 
   const sdText = `±${sd.toFixed(1)} s/d within a single position (typical for this movement: ±${expected.toFixed(1)})`;
 
   let label: HealthLabel;
   let reason: string;
-  if (rateOutOfSpec && unstable) {
+  if (serviceOverdue) {
+    label = "Needs Service";
+    reason = `Last serviced ${overdueYears!.toFixed(1)} years ago, past the ${intervalYears}-year interval used here. The rate itself is ${rateOutOfSpec ? "also outside tolerance" : "still fine"} — this verdict is about elapsed time, not a fault.`;
+  } else if (rateOutOfSpec && unstable) {
     label = "Needs Service";
     reason = `Running outside its tolerance and scattering ${sdText}. Both together point at the movement rather than the regulation.`;
   } else if (rateOutOfSpec) {
