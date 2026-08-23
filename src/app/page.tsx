@@ -29,7 +29,7 @@ export default function DashboardPage() {
   const data = useMemo(() => {
     if (!watch) return null;
     const ms = measurementsFor(watch.id);
-    const stats = computeStats(ms);
+    const stats = computeStats(ms, watch.powerReserveHours);
     const services = servicesFor(watch.id);
     const health = healthScore(watch, stats, services);
     const spec = rateSpecFor(watch);
@@ -196,7 +196,7 @@ export default function DashboardPage() {
       </SectionTitle>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         {active.map((w) => {
-          const s = computeStats(measurementsFor(w.id));
+          const s = computeStats(measurementsFor(w.id), w.powerReserveHours);
           const g = accuracyGrade(s.avgSpd, w.movementType, w.coscCertified, s.gradableCount, rateSpecFor(w));
           return (
             <Link key={w.id} href={`/watches/${w.id}`}>

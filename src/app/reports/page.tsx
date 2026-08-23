@@ -33,7 +33,7 @@ export default function ReportsPage() {
   const report = useMemo(() => {
     if (!watch) return null;
     const ms = measurementsFor(watch.id);
-    const stats = computeStats(ms);
+    const stats = computeStats(ms, watch.powerReserveHours);
     const services = servicesFor(watch.id);
     const health = healthScore(watch, stats, services);
     const spec = rateSpecFor(watch);
@@ -111,7 +111,7 @@ export default function ReportsPage() {
   const exportCollectionCsv = () => {
     const header = "brand,model,reference,movement,caliber,avg_spd,std_dev,variance,grade,health,measurements";
     const rows = active.map((w) => {
-      const s = computeStats(measurementsFor(w.id));
+      const s = computeStats(measurementsFor(w.id), w.powerReserveHours);
       const h = healthScore(w, s, servicesFor(w.id));
       const g = accuracyGrade(s.avgSpd, w.movementType, w.coscCertified, s.gradableCount, rateSpecFor(w));
       return [w.brand, w.model, w.reference ?? "", w.movementType, w.caliber ?? "",

@@ -329,29 +329,29 @@ export function healthScore(
 
   const sdText = `±${sd.toFixed(1)} s/d within a single position (typical for this movement: ±${expected.toFixed(1)})`;
 
+  // Only two things earn a verdict that asks for action, and both are facts
+  // rather than diagnoses: a service date that has passed, and a rate outside
+  // the movement's own tolerance. Scattered readings never produce one — wrist
+  // measurements cannot distinguish a tiring movement from an isochronism
+  // curve, a magnet, or simply a watch measured at different wind states. That
+  // gets reported as an insight with its evidence, where it belongs.
   let label: HealthLabel;
   let reason: string;
   if (serviceOverdue) {
-    label = "Needs Service";
-    reason = `Last serviced ${overdueYears!.toFixed(1)} years ago, past the ${intervalYears}-year interval used here. The rate itself is ${rateOutOfSpec ? "also outside tolerance" : "still fine"} — this verdict is about elapsed time, not a fault.`;
-  } else if (rateOutOfSpec && unstable) {
-    label = "Needs Service";
-    reason = `Running outside its tolerance and scattering ${sdText}. Both together point at the movement rather than the regulation.`;
+    label = "Service due";
+    reason = `Last serviced ${overdueYears!.toFixed(1)} years ago, past the ${intervalYears}-year interval used here. The rate itself is ${rateOutOfSpec ? "also outside tolerance" : "still fine"} — this is about the calendar, not a fault.`;
   } else if (rateOutOfSpec) {
-    label = "Needs Regulation";
+    label = "Regulation due";
     reason = spec
-      ? `The average rate sits outside the ${fmtBand(spec)} this movement is built to. Regulation adjusts exactly this; nothing here suggests a fault.`
-      : `The average rate is a long way from zero, judged on a generic scale because no tolerance is set for this caliber.`;
-  } else if (unstable) {
-    label = "Needs Service";
-    reason = `The rate is within tolerance, but it scatters ${sdText}. Repeatability that poor within one position usually means low amplitude, and regulation cannot fix it.`;
+      ? `The average rate sits outside the ${fmtBand(spec)} this movement is built to. Regulation adjusts exactly this — it's a half-hour job on a timegrapher, not a service.`
+      : `The average rate is a long way from zero, judged on a generic scale because no tolerance is set for this caliber. Set the real spec in the profile before acting on this.`;
   } else {
     if (score >= 85) label = "Excellent";
     else if (score >= 70) label = "Very Good";
     else label = "Good";
     reason = spec
-      ? `Running within its ${fmtBand(spec)} tolerance and repeating to ${sdText}. Nothing needs doing — the score reflects how far from the centre of spec it sits and how long since it was serviced, not a fault.`
-      : `Nothing here needs attention. Set this caliber's tolerance in the profile for a sharper verdict.`;
+      ? `Running within the ${fmtBand(spec)} this movement is built to${unstable ? `, though readings scatter ${sdText}` : ` and repeating to ${sdText}`}. Nothing needs doing — the score reflects how far from the centre of spec it sits, how consistent the readings are, and how long since a service.`
+      : `Running as expected. Set this caliber's tolerance in the profile for a sharper verdict.`;
   }
 
   return { score, label, components, reason };
@@ -361,8 +361,9 @@ export const HEALTH_COLORS: Record<HealthLabel, string> = {
   Excellent: "#34d399",
   "Very Good": "#6ee7b7",
   Good: "#60a5fa",
-  "Needs Regulation": "#fbbf24",
-  "Needs Service": "#f87171",
+  // Amber, not red: both are routine maintenance, not emergencies.
+  "Regulation due": "#fbbf24",
+  "Service due": "#fbbf24",
 };
 
 const HEALTH_MEANING: Record<HealthLabel, string> = {
@@ -370,10 +371,10 @@ const HEALTH_MEANING: Record<HealthLabel, string> = {
   "Very Good": "Performing well. Keep measuring at your usual cadence.",
   Good:
     "Running within tolerance. The score reflects how far from the centre of spec it sits and how consistent it is — a lower number here is not a fault.",
-  "Needs Regulation":
-    "The rate is outside the movement's tolerance. A watchmaker can adjust it without a full service — this is a rate problem, not a fault.",
-  "Needs Service":
-    "The rate scatters more than it should within a single position, which regulation cannot fix. Worth having the movement looked at.",
+  "Regulation due":
+    "The rate is outside the movement's tolerance. A watchmaker adjusts this on a timegrapher; it is a rate problem, not a fault.",
+  "Service due":
+    "Enough time has passed since the last recorded service to be worth booking one. This is a calendar reminder, not a diagnosis.",
 };
 
 /**
@@ -382,7 +383,7 @@ const HEALTH_MEANING: Record<HealthLabel, string> = {
  * no spec to be outside of, only a generic assumption.
  */
 export function healthExplanation(label: HealthLabel, hasSpec = true): string {
-  if (!hasSpec && label === "Needs Regulation")
+  if (!hasSpec && label === "Regulation due")
     return (
       "The rate is a long way from zero, but no tolerance is set for this movement — " +
       "this verdict comes from a generic scale, not your caliber's real spec. " +

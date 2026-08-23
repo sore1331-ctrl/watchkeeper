@@ -31,7 +31,7 @@ export default function AnalyticsPage() {
     if (!watch) return null;
     const cutoff = Date.now() - rangeDays * DAY_MS;
     const ms = measurementsFor(watch.id).filter((m) => +new Date(m.measuredAt) > cutoff);
-    const stats = computeStats(ms);
+    const stats = computeStats(ms, watch.powerReserveHours);
     const r7 = rollingAverage(stats.samples, 7);
     const r30 = rollingAverage(stats.samples, 30);
     const chartData = stats.samples.map((s, i) => ({

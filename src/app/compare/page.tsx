@@ -26,7 +26,7 @@ export default function ComparePage() {
         .filter((w) => ids.includes(w.id))
         .map((w) => {
           const ms = measurementsFor(w.id);
-          const stats = computeStats(ms);
+          const stats = computeStats(ms, w.powerReserveHours);
           return {
             watch: w, stats,
             health: healthScore(w, stats, servicesFor(w.id)),

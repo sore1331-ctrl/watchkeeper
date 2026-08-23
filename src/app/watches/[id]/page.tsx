@@ -42,7 +42,7 @@ export default function WatchDetailPage() {
   const data = useMemo(() => {
     if (!watch) return null;
     const ms = measurementsFor(watch.id);
-    const stats = computeStats(ms);
+    const stats = computeStats(ms, watch.powerReserveHours);
     const services = servicesFor(watch.id);
     const rolling7 = rollingAverage(stats.samples, 7);
     const rolling30 = rollingAverage(stats.samples, 30);
@@ -165,6 +165,8 @@ export default function WatchDetailPage() {
             <p className="mt-1 text-muted">
               {stats.excluded.some((e) => e.reason === "time-corrected") &&
                 "Intervals where you corrected the time are skipped — the jump is your adjustment, not drift. "}
+              {stats.excluded.some((e) => e.reason === "ran-down") &&
+                `Some intervals ran longer than the ${watch.powerReserveHours}h power reserve with the watch unworn, so the mainspring emptied partway through. A watch winding down runs slow and then stops — that is the reserve, not the movement, so those intervals are left out. `}
               {stats.excluded.some((e) => e.reason === "implausible") &&
                 `Some intervals imply an impossible rate (over ${IMPLAUSIBLE_SPD} s/d), which normally means the watch was reset or had stopped. Tick "I corrected the time" when logging those so they're recorded properly. `}
               Offsets are still plotted in full.

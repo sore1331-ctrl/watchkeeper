@@ -2,7 +2,7 @@
 
 import type { Insight, Measurement, Notification, Watch, ServiceRecord } from "./types";
 import { analyzeConditions, computeStats, detectAnomaly, mean, stdDev, type WatchStats } from "./stats";
-import { accuracyGrade, batteryRemaining, daysSince, healthScore, lastRegulationDate, MIN_MEASUREMENTS_FOR_GRADE, nextServiceEstimate, rateSpecFor } from "./grades";
+import { accuracyGrade, batteryRemaining, daysSince, expectedScatter, healthScore, lastRegulationDate, MIN_MEASUREMENTS_FOR_GRADE, nextServiceEstimate, rateSpecFor } from "./grades";
 
 const DAY_MS = 86_400_000;
 let seq = 0;
@@ -23,7 +23,7 @@ export function generateInsights(
   measurements: Measurement[],
   services: ServiceRecord[]
 ): Insight[] {
-  const stats = computeStats(measurements);
+  const stats = computeStats(measurements, watch.powerReserveHours);
   const out: Insight[] = [];
   const name = `${watch.brand} ${watch.model}`;
   // Same evidence bar as grading: below it, one stray reading dominates.
@@ -176,6 +176,20 @@ export function generateInsights(
       });
   }
 
+  // Scattered readings: report what it could be, don't declare a fault. Rate
+  // data alone cannot separate a tiring movement from perfectly ordinary
+  // causes, so this is offered as something to look into.
+  const scatter = stats.adjustedStdDev ?? stats.stdDev;
+  const normalScatter = expectedScatter(spec);
+  if (stats.gradableCount >= 14 && scatter != null && scatter > normalScatter * 2) {
+    out.push({
+      id: nid(), watchId: watch.id, kind: "stability", severity: "neutral",
+      text: `${name}'s readings scatter ±${scatter.toFixed(1)} s/d within a single position — wider than the ±${normalScatter.toFixed(1)} typical of this movement.`,
+      detail:
+        "Worth a look, though it is not automatically a fault. Common causes, cheapest first: readings taken at different wind states (a mainspring near the end of its reserve runs slower), a magnetised hairspring (a demagnetiser fixes this in seconds), measuring over short gaps where a half-second reading error becomes several s/d, or genuinely low amplitude — which only a timegrapher can confirm.",
+    });
+  }
+
   // Anomaly detection — on condition-adjusted residuals where possible
   const anomaly = detectAnomaly(stats.samples);
   if (anomaly?.drifting)
@@ -205,7 +219,7 @@ export function generateNotifications(
   for (const w of watches.filter((x) => !x.archived)) {
     const ms = measurementsByWatch.get(w.id) ?? [];
     const svcs = servicesByWatch.get(w.id) ?? [];
-    const stats = computeStats(ms);
+    const stats = computeStats(ms, w.powerReserveHours);
     const name = `${w.brand} ${w.model}`;
 
     const lastDays = daysSince(stats.lastMeasuredAt);

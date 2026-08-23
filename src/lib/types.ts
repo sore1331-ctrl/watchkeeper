@@ -20,12 +20,18 @@ export type AccuracyGrade =
   | "Poor"
   | "Critical";
 
+/**
+ * Health verdicts describe state, or name a due date. They never diagnose a
+ * fault from rate readings alone — wrist data cannot support that, and an
+ * unwarranted "needs service" is worse than no verdict at all. Anything the
+ * app merely suspects is reported as an insight with its evidence instead.
+ */
 export type HealthLabel =
   | "Excellent"
   | "Very Good"
   | "Good"
-  | "Needs Regulation"
-  | "Needs Service";
+  | "Regulation due"
+  | "Service due";
 
 export type ServiceType =
   | "full-service"

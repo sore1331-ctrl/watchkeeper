@@ -124,11 +124,37 @@ export const IMPLAUSIBLE_SPD = 300;
 export interface ExcludedSample {
   date: string;
   spd: number;
-  reason: "time-corrected" | "implausible";
+  reason: "time-corrected" | "implausible" | "ran-down";
+}
+
+/**
+ * Did the mainspring run out during this interval?
+ *
+ * A watch left unworn for longer than its power reserve stops. Long before it
+ * stops, falling torque drops the balance amplitude and the watch runs
+ * progressively slower. Either way the interval measures a watch that wasn't
+ * running properly, not the rate of a healthy movement — so it is no more a
+ * timekeeping reading than a manual correction is.
+ */
+function ranDown(
+  prev: Measurement,
+  gapHours: number,
+  powerReserveHours?: number
+): boolean {
+  if (!powerReserveHours || prev.wornToday) return false;
+  // reserve remaining when it was set down, if recorded
+  const remaining =
+    prev.powerReservePct != null
+      ? powerReserveHours * (prev.powerReservePct / 100)
+      : powerReserveHours;
+  return gapHours > remaining;
 }
 
 /** Intervals that were not counted as drift, with why. */
-export function excludedSamples(measurements: Measurement[]): ExcludedSample[] {
+export function excludedSamples(
+  measurements: Measurement[],
+  powerReserveHours?: number
+): ExcludedSample[] {
   const ms = [...measurements].sort(
     (a, b) => +new Date(a.measuredAt) - +new Date(b.measuredAt)
   );
@@ -140,12 +166,17 @@ export function excludedSamples(measurements: Measurement[]): ExcludedSample[] {
     if (ms[i].timeAdjusted) out.push({ date: ms[i].measuredAt, spd, reason: "time-corrected" });
     else if (Math.abs(spd) > IMPLAUSIBLE_SPD)
       out.push({ date: ms[i].measuredAt, spd, reason: "implausible" });
+    else if (ranDown(ms[i - 1], gapMs / 3_600_000, powerReserveHours))
+      out.push({ date: ms[i].measuredAt, spd, reason: "ran-down" });
   }
   return out;
 }
 
 /** Convert consecutive measurements into normalized seconds/day samples. */
-export function rateSamples(measurements: Measurement[]): RateSample[] {
+export function rateSamples(
+  measurements: Measurement[],
+  powerReserveHours?: number
+): RateSample[] {
   const ms = [...measurements].sort(
     (a, b) => +new Date(a.measuredAt) - +new Date(b.measuredAt)
   );
@@ -165,6 +196,8 @@ export function rateSamples(measurements: Measurement[]): RateSample[] {
     // Safety net for history recorded before corrections could be flagged:
     // a reset or a stopped watch masquerades as an enormous rate.
     if (Math.abs(spd) > IMPLAUSIBLE_SPD) continue;
+    // The mainspring ran out somewhere in here — not a rate.
+    if (ranDown(prev, gapMs / 3_600_000, powerReserveHours)) continue;
 
     out.push({
       date: cur.measuredAt,
@@ -299,11 +332,15 @@ export function analyzeConditions(samples: RateSample[]): ConditionAnalysis | nu
   };
 }
 
-export function computeStats(measurements: Measurement[]): WatchStats {
+export function computeStats(
+  measurements: Measurement[],
+  /** the watch's rated reserve, so wound-down intervals can be spotted */
+  powerReserveHours?: number
+): WatchStats {
   const ms = [...measurements].sort(
     (a, b) => +new Date(a.measuredAt) - +new Date(b.measuredAt)
   );
-  const samples = rateSamples(ms);
+  const samples = rateSamples(ms, powerReserveHours);
   const last = ms[ms.length - 1] ?? null;
 
   const empty: WatchStats = {
@@ -318,7 +355,7 @@ export function computeStats(measurements: Measurement[]): WatchStats {
     performanceScore: null, stabilityScore: null, consistencyIndex: null,
     confidence95: null, predicted: null, stabilityPct: null, wearRatio: null,
     samples,
-    excluded: excludedSamples(measurements),
+    excluded: excludedSamples(measurements, powerReserveHours),
   };
   if (samples.length === 0) return empty;
 
