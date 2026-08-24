@@ -102,7 +102,7 @@ function NotificationsPanel({ onClose }: { onClose: () => void }) {
 export function Shell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { dark, toggle } = useTheme();
-  const { notifications, demo, cloudSynced, ready, sync, user } = useStore();
+  const { notifications, demo, cloudSynced, ready, sync, supabaseConfigured, user } = useStore();
   const [showNotifs, setShowNotifs] = useState(false);
 
   return (
@@ -198,6 +198,24 @@ export function Shell({ children }: { children: React.ReactNode }) {
                 </span>
               )}
             </button>
+            {/* Account — the sidebar is hidden on small screens, so this is the
+                only way in to sign in from a phone. */}
+            <Link
+              href="/account"
+              title={cloudSynced ? user?.email ?? "Account" : "Sign in"}
+              aria-label={cloudSynced ? "Account" : "Sign in"}
+              className={cn(
+                "relative rounded-lg p-2 transition-colors md:hidden",
+                pathname.startsWith("/account")
+                  ? "text-accent"
+                  : "text-muted hover:bg-surface-2 hover:text-foreground"
+              )}
+            >
+              <UserRound className="h-4.5 w-4.5" />
+              {ready && supabaseConfigured && !cloudSynced && (
+                <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-accent" />
+              )}
+            </Link>
             <AnimatePresence>
               {showNotifs && <NotificationsPanel onClose={() => setShowNotifs(false)} />}
             </AnimatePresence>
