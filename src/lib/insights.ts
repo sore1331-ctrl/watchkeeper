@@ -1,6 +1,6 @@
 // ─── Smart insights + notification engine ───────────────────────────────────
 
-import type { Insight, Measurement, Notification, Watch, ServiceRecord } from "./types";
+import type { Insight, Measurement, Notification, RestingHandling, Watch, ServiceRecord } from "./types";
 import { analyzeConditions, computeStats, detectAnomaly, mean, stdDev, type WatchStats } from "./stats";
 import { accuracyGrade, batteryRemaining, daysSince, expectedScatter, healthScore, lastRegulationDate, MIN_MEASUREMENTS_FOR_GRADE, nextServiceEstimate, rateSpecFor } from "./grades";
 
@@ -21,9 +21,10 @@ const POSITION_LABEL: Record<string, string> = {
 export function generateInsights(
   watch: Watch,
   measurements: Measurement[],
-  services: ServiceRecord[]
+  services: ServiceRecord[],
+  restingReadings: RestingHandling = "separate"
 ): Insight[] {
-  const stats = computeStats(measurements, watch.powerReserveHours);
+  const stats = computeStats(measurements, { powerReserveHours: watch.powerReserveHours, restingReadings });
   const out: Insight[] = [];
   const name = `${watch.brand} ${watch.model}`;
   // Same evidence bar as grading: below it, one stray reading dominates.
@@ -209,7 +210,8 @@ export function generateNotifications(
   watches: Watch[],
   measurementsByWatch: Map<string, Measurement[]>,
   servicesByWatch: Map<string, ServiceRecord[]>,
-  reminderDays = 3
+  reminderDays = 3,
+  restingReadings: RestingHandling = "separate"
 ): Notification[] {
   const out: Notification[] = [];
   let n = 0;
@@ -219,7 +221,7 @@ export function generateNotifications(
   for (const w of watches.filter((x) => !x.archived)) {
     const ms = measurementsByWatch.get(w.id) ?? [];
     const svcs = servicesByWatch.get(w.id) ?? [];
-    const stats = computeStats(ms, w.powerReserveHours);
+    const stats = computeStats(ms, { powerReserveHours: w.powerReserveHours, restingReadings });
     const name = `${w.brand} ${w.model}`;
 
     const lastDays = daysSince(stats.lastMeasuredAt);

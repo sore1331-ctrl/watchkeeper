@@ -177,10 +177,19 @@ export interface Insight {
   detail?: string;
 }
 
+/**
+ * How intervals the watch spent resting (typically overnight) feed the
+ * headline figures. A watch on the nightstand is measuring one position at
+ * a stable temperature; on the wrist it is measuring a mix of positions at
+ * body heat. Averaging the two answers neither question well.
+ */
+export type RestingHandling = "include" | "separate" | "exclude";
+
 export interface AppSettings {
   displayName: string;
   /** ISO 4217 code used for new watches and collection totals */
   currency: string;
+  restingReadings: RestingHandling;
   temperatureUnit: "C" | "F";
   measurementReminderDays: number;
   serviceIntervalYears: number;

@@ -2,7 +2,7 @@
 // All rate math works on "daily rate" samples: the change in offset between two
 // consecutive measurements, normalized to seconds/day.
 
-import type { Measurement } from "./types";
+import type { Measurement, RestingHandling } from "./types";
 
 export interface RateSample {
   /** ISO date of the later measurement */
@@ -73,7 +73,16 @@ export interface WatchStats {
   /** ratio of samples within 1 stddev of mean */
   stabilityPct: number | null;
   wearRatio: number | null;
+  /** every valid sample — charts and the position breakdown use all of them */
   samples: RateSample[];
+  /** the subset the headline figures above were calculated from */
+  headlineSamples: RateSample[];
+  /** whether the headline used worn intervals only, and why */
+  headlineBasis: "all" | "worn-only";
+  /** mean rate on the wrist and at rest, when there is enough of each */
+  wornRate: number | null;
+  restingRate: number | null;
+  restingCount: number;
   /** intervals not counted as drift (time corrections, stopped watch) */
   excluded: ExcludedSample[];
 }
@@ -332,16 +341,34 @@ export function analyzeConditions(samples: RateSample[]): ConditionAnalysis | nu
   };
 }
 
+/** Worn samples needed before the headline can safely ignore resting ones. */
+const MIN_WORN_FOR_SPLIT = 5;
+
 export function computeStats(
   measurements: Measurement[],
-  /** the watch's rated reserve, so wound-down intervals can be spotted */
-  powerReserveHours?: number
+  opts: {
+    /** the watch's rated reserve, so wound-down intervals can be spotted */
+    powerReserveHours?: number;
+    /** how resting (overnight) intervals feed the headline figures */
+    restingReadings?: RestingHandling;
+  } = {}
 ): WatchStats {
+  const { powerReserveHours, restingReadings = "separate" } = opts;
   const ms = [...measurements].sort(
     (a, b) => +new Date(a.measuredAt) - +new Date(b.measuredAt)
   );
   const samples = rateSamples(ms, powerReserveHours);
   const last = ms[ms.length - 1] ?? null;
+
+  // Split wrist time from rest. Keeping resting readings out of the headline
+  // only makes sense when enough worn intervals remain to say anything — for
+  // someone who only ever measures overnight, everything still counts.
+  const wornSamples = samples.filter((s) => s.worn);
+  const restingSamples = samples.filter((s) => !s.worn);
+  const splitWanted = restingReadings !== "include";
+  const canSplit = splitWanted && wornSamples.length >= MIN_WORN_FOR_SPLIT;
+  const headlineSamples = canSplit ? wornSamples : samples;
+  const headlineBasis: "all" | "worn-only" = canSplit ? "worn-only" : "all";
 
   const empty: WatchStats = {
     count: ms.length,
@@ -355,23 +382,39 @@ export function computeStats(
     performanceScore: null, stabilityScore: null, consistencyIndex: null,
     confidence95: null, predicted: null, stabilityPct: null, wearRatio: null,
     samples,
+    headlineSamples,
+    headlineBasis,
+    wornRate: wornSamples.length >= 3 ? mean(wornSamples.map((s) => s.spd)) : null,
+    restingRate: restingSamples.length >= 3 ? mean(restingSamples.map((s) => s.spd)) : null,
+    restingCount: restingSamples.length,
     excluded: excludedSamples(measurements, powerReserveHours),
   };
-  if (samples.length === 0) return empty;
+  if (headlineSamples.length === 0) return empty;
 
-  const spds = samples.map((s) => s.spd);
+  // Everything below describes the headline set. Charts and the position
+  // breakdown still read `samples`, so no reading disappears from view.
+  const spds = headlineSamples.map((s) => s.spd);
   const avg = mean(spds);
   const sd = stdDev(spds);
-  const t0 = +new Date(samples[0].date);
-  const pts = samples.map((s) => ({ x: (+new Date(s.date) - t0) / DAY_MS, y: s.spd }));
-  const absPts = samples.map((s) => ({ x: (+new Date(s.date) - t0) / DAY_MS, y: Math.abs(s.spd) }));
+  const t0 = +new Date(headlineSamples[0].date);
+  const pts = headlineSamples.map((s) => ({ x: (+new Date(s.date) - t0) / DAY_MS, y: s.spd }));
+  const absPts = headlineSamples.map((s) => ({ x: (+new Date(s.date) - t0) / DAY_MS, y: Math.abs(s.spd) }));
 
-  const w7 = samplesInWindow(samples, 7);
-  const w30 = samplesInWindow(samples, 30);
+  const w7 = samplesInWindow(headlineSamples, 7);
+  const w30 = samplesInWindow(headlineSamples, 30);
 
+  // The breakdown reads every sample — resting positions are the whole point
+  // of that card — while stability judges only the headline set.
   const conditions = analyzeConditions(samples);
   // Instability is the spread *within* a condition; positional delta is normal.
-  const effectiveSd = conditions?.reliable ? conditions.withinSd : sd;
+  // A worn-only headline is already a single condition, so its plain σ is the
+  // within-condition figure.
+  const effectiveSd =
+    headlineBasis === "worn-only"
+      ? sd
+      : conditions?.reliable
+        ? conditions.withinSd
+        : sd;
 
   // Scores. Performance: |avg| of 0 → 100, 30 s/d → 0 (log-ish curve).
   const perf = Math.max(0, Math.min(100, 100 * (1 - Math.log10(1 + Math.abs(avg) * 3) / Math.log10(91))));
@@ -385,7 +428,7 @@ export function computeStats(
 
   return {
     ...empty,
-    todayRate: samples[samples.length - 1].spd,
+    todayRate: headlineSamples[headlineSamples.length - 1].spd,
     avgSpd: avg,
     medianSpd: median(spds),
     maxGain: Math.max(...spds),

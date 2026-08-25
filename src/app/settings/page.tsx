@@ -10,6 +10,7 @@ import { Button, Card, Input, Label, Select, Skeleton } from "@/components/ui";
 import { SectionTitle } from "@/components/widgets";
 import { getSupabase } from "@/lib/supabase/client";
 import { CURRENCIES } from "@/lib/utils";
+import type { RestingHandling } from "@/lib/types";
 
 export default function SettingsPage() {
   const { ready, settings, updateSettings, resetDemoData, demo, cloudSynced } = useStore();
@@ -44,6 +45,29 @@ export default function SettingsPage() {
             that use your current currency — amounts are never converted, so the figures
             you entered stay exactly as you typed them. A watch can also be set to its
             own currency in its profile.
+          </p>
+        </div>
+        <div>
+          <Label>Overnight / resting readings</Label>
+          <Select
+            value={settings.restingReadings}
+            onChange={(e) =>
+              updateSettings({ restingReadings: e.target.value as RestingHandling })
+            }
+          >
+            <option value="separate">Keep separate from the headline rate (recommended)</option>
+            <option value="include">Count them the same as worn time</option>
+            <option value="exclude">Ignore them entirely</option>
+          </Select>
+          <p className="mt-1 text-[11px] leading-relaxed text-faint">
+            An interval where the watch sat on the nightstand measures one position at
+            room temperature; worn, it measures a mix of positions at body heat. Those
+            answer different questions, so averaging them together serves neither.
+            Separating them means your average rate, grade and health describe the watch
+            in use, while resting readings still appear in the charts and in the
+            rate-by-position breakdown, where they are most useful. If you mostly
+            measure overnight, everything is counted anyway — there has to be enough
+            worn data to leave any out.
           </p>
         </div>
         <div className="grid grid-cols-2 gap-3">

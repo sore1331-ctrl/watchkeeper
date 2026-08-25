@@ -12,7 +12,7 @@ import { Card, Skeleton } from "@/components/ui";
 import { cn, fmtMoney } from "@/lib/utils";
 
 export default function ComparePage() {
-  const { ready, watches, measurementsFor, servicesFor } = useStore();
+  const { ready, watches, measurementsFor, servicesFor, settings } = useStore();
   const active = watches.filter((w) => !w.archived);
   const [selected, setSelected] = useState<string[]>([]);
   // Any explicit selection is honoured, including a single watch. Only an
@@ -26,7 +26,7 @@ export default function ComparePage() {
         .filter((w) => ids.includes(w.id))
         .map((w) => {
           const ms = measurementsFor(w.id);
-          const stats = computeStats(ms, w.powerReserveHours);
+          const stats = computeStats(ms, { powerReserveHours: w.powerReserveHours, restingReadings: settings.restingReadings });
           return {
             watch: w, stats,
             health: healthScore(w, stats, servicesFor(w.id)),

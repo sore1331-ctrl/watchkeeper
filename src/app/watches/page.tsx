@@ -21,7 +21,7 @@ export default function WatchesPage() {
     () =>
       active.map((w) => {
         const ms = measurementsFor(w.id);
-        const stats = computeStats(ms, w.powerReserveHours);
+        const stats = computeStats(ms, { powerReserveHours: w.powerReserveHours, restingReadings: settings.restingReadings });
         const services = servicesFor(w.id);
         const health = healthScore(w, stats, services);
         return {

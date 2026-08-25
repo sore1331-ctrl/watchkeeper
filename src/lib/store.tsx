@@ -58,6 +58,7 @@ export type SyncState =
 const DEFAULT_SETTINGS: AppSettings = {
   displayName: "Collector",
   currency: "GBP", // replaced by the browser's locale on first run
+  restingReadings: "separate",
   temperatureUnit: "C",
   measurementReminderDays: 3,
   serviceIntervalYears: 5,
@@ -335,7 +336,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       svcByWatch.get(sv.watchId)!.push(sv);
     }
     const notifications = state
-      ? generateNotifications(s.watches, byWatch, svcByWatch, s.settings.measurementReminderDays)
+      ? generateNotifications(
+          s.watches, byWatch, svcByWatch,
+          s.settings.measurementReminderDays, s.settings.restingReadings
+        )
           .filter((n) => {
             const snoozed = s.dismissedNotifications.find(
               (d) => d.key === `${n.kind}:${n.watchId}`
@@ -346,7 +350,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       : [];
     const insights = state
       ? s.watches.flatMap((w) =>
-          generateInsights(w, byWatch.get(w.id) ?? [], svcByWatch.get(w.id) ?? [])
+          generateInsights(
+            w, byWatch.get(w.id) ?? [], svcByWatch.get(w.id) ?? [], s.settings.restingReadings
+          )
         )
       : [];
 

@@ -25,7 +25,7 @@ function download(name: string, mime: string, content: string) {
 
 export default function ReportsPage() {
   const store = useStore();
-  const { ready, watches, measurementsFor, servicesFor } = store;
+  const { ready, watches, measurementsFor, servicesFor, settings } = store;
   const active = watches.filter((w) => !w.archived);
   const [watchId, setWatchId] = useState<string | null>(null);
   const watch = active.find((w) => w.id === watchId) ?? active[0];
@@ -33,7 +33,7 @@ export default function ReportsPage() {
   const report = useMemo(() => {
     if (!watch) return null;
     const ms = measurementsFor(watch.id);
-    const stats = computeStats(ms, watch.powerReserveHours);
+    const stats = computeStats(ms, { powerReserveHours: watch.powerReserveHours, restingReadings: settings.restingReadings });
     const services = servicesFor(watch.id);
     const health = healthScore(watch, stats, services);
     const spec = rateSpecFor(watch);
@@ -111,7 +111,7 @@ export default function ReportsPage() {
   const exportCollectionCsv = () => {
     const header = "brand,model,reference,movement,caliber,avg_spd,std_dev,variance,grade,health,measurements";
     const rows = active.map((w) => {
-      const s = computeStats(measurementsFor(w.id), w.powerReserveHours);
+      const s = computeStats(measurementsFor(w.id), { powerReserveHours: w.powerReserveHours, restingReadings: settings.restingReadings });
       const h = healthScore(w, s, servicesFor(w.id));
       const g = accuracyGrade(s.avgSpd, w.movementType, w.coscCertified, s.gradableCount, rateSpecFor(w));
       return [w.brand, w.model, w.reference ?? "", w.movementType, w.caliber ?? "",

@@ -35,14 +35,14 @@ export default function WatchDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const store = useStore();
-  const { ready, watches, measurementsFor, servicesFor, insights, deleteWatch } = store;
+  const { ready, watches, measurementsFor, servicesFor, insights, deleteWatch, settings } = store;
   const watch = watches.find((w) => w.id === id);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const data = useMemo(() => {
     if (!watch) return null;
     const ms = measurementsFor(watch.id);
-    const stats = computeStats(ms, watch.powerReserveHours);
+    const stats = computeStats(ms, { powerReserveHours: watch.powerReserveHours, restingReadings: settings.restingReadings });
     const services = servicesFor(watch.id);
     const rolling7 = rollingAverage(stats.samples, 7);
     const rolling30 = rollingAverage(stats.samples, 30);
@@ -179,7 +179,11 @@ export default function WatchDetailPage() {
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:gap-4">
         <StatCard label="Current offset" value={fmtSec(stats.currentOffset)} accent={watch.accentColor}
           sub={`measured ${fmtDateTime(stats.lastMeasuredAt)}`} />
-        <StatCard label="Average rate" value={fmtSpd(stats.avgSpd)} sub={`median ${fmtSpd(stats.medianSpd)}`} delay={0.05} />
+        <StatCard label="Average rate" value={fmtSpd(stats.avgSpd)}
+          sub={stats.headlineBasis === "worn-only"
+            ? "on the wrist only"
+            : `median ${fmtSpd(stats.medianSpd)}`}
+          delay={0.05} />
         <StatCard label="Std deviation"
           value={stats.adjustedStdDev != null ? `±${stats.adjustedStdDev.toFixed(2)}` : "—"}
           sub={stats.conditions?.reliable
@@ -257,6 +261,40 @@ export default function WatchDetailPage() {
               <WearFrequencyChart data={data.wearByDay} color={watch.accentColor} height={200} />
             </ChartCard>
           </div>
+          {(stats.wornRate != null || stats.restingRate != null) && (
+            <Card className="p-5">
+              <p className="text-sm font-semibold">On the wrist vs at rest</p>
+              <p className="mt-0.5 text-xs text-muted">
+                Two different measurements: worn is a mix of positions at body heat,
+                resting is one position at room temperature.
+              </p>
+              <div className="mt-4 flex flex-wrap gap-8">
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider text-muted">Worn</p>
+                  <p className="text-xl font-bold tabular-nums">{fmtSpd(stats.wornRate)}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider text-muted">Resting</p>
+                  <p className="text-xl font-bold tabular-nums">{fmtSpd(stats.restingRate)}</p>
+                  <p className="text-[10px] text-faint">{stats.restingCount} intervals</p>
+                </div>
+                {stats.wornRate != null && stats.restingRate != null && (
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wider text-muted">Difference</p>
+                    <p className="text-xl font-bold tabular-nums">
+                      {fmtSpd(stats.wornRate - stats.restingRate)}
+                    </p>
+                  </div>
+                )}
+              </div>
+              <p className="mt-3 text-xs text-muted">
+                {stats.headlineBasis === "worn-only"
+                  ? "The figures above the charts describe worn time only — resting readings are kept out so they don't pull the average toward whichever position the watch sleeps in. Change this in Settings."
+                  : "Both are counted together in the figures above. Settings can keep resting readings separate."}
+              </p>
+            </Card>
+          )}
+
           <ChartCard
             title="Rate by position"
             sub="how the movement behaves in each position it was kept in"
