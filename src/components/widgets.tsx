@@ -329,17 +329,22 @@ export function ConditionBreakdown({
 }
 
 export function ScoreBar({
-  name, score, weight,
+  name, score, weight, note,
 }: {
   name: string;
   score: number;
   weight?: number;
+  /** the measurement behind the number, so a low bar explains itself */
+  note?: string;
 }) {
   const color =
     score >= 75 ? "var(--positive)" : score >= 50 ? "var(--warning)" : "var(--critical)";
   return (
     <div className="flex items-center gap-3">
-      <span className="w-28 shrink-0 text-xs text-muted">{name}</span>
+      <span className="w-28 shrink-0 text-xs text-muted">
+        {name}
+        {note && <span className="block text-[10px] leading-tight text-faint">{note}</span>}
+      </span>
       <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-2">
         <motion.div
           className="h-full rounded-full"

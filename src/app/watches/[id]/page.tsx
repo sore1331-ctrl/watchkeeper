@@ -323,7 +323,8 @@ export default function WatchDetailPage() {
                 </div>
                 <div className="flex-1 space-y-2.5">
                   {health.components.map((c) => (
-                    <ScoreBar key={c.name} name={c.name} score={c.score} weight={c.weight} />
+                    <ScoreBar key={c.name} name={c.name} score={c.score}
+                      weight={c.weight} note={c.note} />
                   ))}
                   <p className="pt-1 text-xs text-muted">{health.reason}</p>
                   <p className="text-[11px] text-faint">

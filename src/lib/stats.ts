@@ -44,13 +44,16 @@ export interface WatchStats {
   stdDev: number | null;
   variance: number | null;
   /**
-   * Spread after positional/wear differences are removed. This is what
-   * "unstable" should mean — raw variance also contains the watch's normal
-   * dial-up vs crown-down delta. Falls back to raw σ when conditions
-   * aren't recorded consistently enough to separate them.
+   * Spread after positional/wear differences are removed, measured robustly
+   * so that a few contaminated intervals cannot masquerade as an unstable
+   * movement. This is what "unstable" should mean — raw variance also
+   * contains the watch's normal dial-up vs crown-down delta, and any reading
+   * that spanned a stoppage.
    */
   adjustedStdDev: number | null;
   adjustedVariance: number | null;
+  /** readings sitting far outside the robust scatter — likely bad data */
+  outliers: { date: string; spd: number }[];
   conditions: ConditionAnalysis | null;
   weeklyVariance: number | null;
   monthlyVariance: number | null;
@@ -58,6 +61,10 @@ export interface WatchStats {
   rolling30: number | null;
   /** slope of spd over time, sec/day per day. + = rate increasing */
   driftTrend: number | null;
+  /** the same trend expressed per 30 days, signed */
+  driftPerMonth: number | null;
+  /** whether that trend stands out from the scatter (|t| ≥ 2) */
+  driftSignificant: boolean;
   /** slope of |spd| over time — accuracy getting better (<0) or worse (>0) */
   accuracyTrend: number | null;
   /** 0-100 — closeness to ±0 s/d */
@@ -107,6 +114,58 @@ export function variance(xs: number[]): number {
 
 export function stdDev(xs: number[]): number {
   return Math.sqrt(variance(xs));
+}
+
+/**
+ * Scatter that a few bad readings cannot dominate.
+ *
+ * Standard deviation squares every deviation, so one interval spanning a
+ * stopped watch drags it up by more than twenty ordinary readings pull it
+ * down — four contaminated readings in thirty take σ from ±10 to ±70. The
+ * median absolute deviation ignores the tails entirely; the 1.4826 factor
+ * rescales it to agree with σ on clean, normally-distributed data.
+ */
+export function robustScatter(xs: number[]): number {
+  if (xs.length < 3) return stdDev(xs);
+  const centre = median(xs);
+  return 1.4826 * median(xs.map((x) => Math.abs(x - centre)));
+}
+
+export interface TrendFit {
+  /** least-squares slope, y-units per day */
+  slope: number;
+  /** standard error of that slope */
+  stdError: number;
+  /** slope ÷ its own error; |t| ≥ 2 is roughly the 95% mark */
+  t: number;
+}
+
+/**
+ * Fit a trend *and* say how much to believe it.
+ *
+ * A slope on its own is meaningless without knowing how noisy the data was:
+ * scatter of ±60 s/d will throw up an apparent trend of half a second per day
+ * out of pure randomness. Comparing the slope to its own standard error is the
+ * difference between "this watch is drifting" and "these readings are noisy".
+ */
+export function fitTrend(points: { x: number; y: number }[]): TrendFit {
+  const n = points.length;
+  if (n < 3) return { slope: 0, stdError: Infinity, t: 0 };
+  const mx = mean(points.map((p) => p.x));
+  const my = mean(points.map((p) => p.y));
+  let sxx = 0;
+  let sxy = 0;
+  for (const p of points) {
+    sxx += (p.x - mx) ** 2;
+    sxy += (p.x - mx) * (p.y - my);
+  }
+  if (sxx === 0) return { slope: 0, stdError: Infinity, t: 0 };
+  const b = sxy / sxx;
+  const intercept = my - b * mx;
+  let sse = 0;
+  for (const p of points) sse += (p.y - (intercept + b * p.x)) ** 2;
+  const stdError = Math.sqrt(sse / (n - 2) / sxx);
+  return { slope: b, stdError, t: stdError > 0 ? b / stdError : 0 };
 }
 
 /** least-squares slope of y over x (x in days) */
@@ -377,8 +436,10 @@ export function computeStats(
     lastMeasuredAt: last ? last.measuredAt : null,
     todayRate: null, avgSpd: null, medianSpd: null, maxGain: null, maxLoss: null,
     stdDev: null, variance: null, adjustedStdDev: null, adjustedVariance: null,
+    outliers: [],
     conditions: null, weeklyVariance: null, monthlyVariance: null,
-    rolling7: null, rolling30: null, driftTrend: null, accuracyTrend: null,
+    rolling7: null, rolling30: null, driftTrend: null,
+    driftPerMonth: null, driftSignificant: false, accuracyTrend: null,
     performanceScore: null, stabilityScore: null, consistencyIndex: null,
     confidence95: null, predicted: null, stabilityPct: null, wearRatio: null,
     samples,
@@ -402,19 +463,34 @@ export function computeStats(
 
   const w7 = samplesInWindow(headlineSamples, 7);
   const w30 = samplesInWindow(headlineSamples, 30);
+  const driftFit = fitTrend(pts);
 
   // The breakdown reads every sample — resting positions are the whole point
   // of that card — while stability judges only the headline set.
   const conditions = analyzeConditions(samples);
-  // Instability is the spread *within* a condition; positional delta is normal.
-  // A worn-only headline is already a single condition, so its plain σ is the
-  // within-condition figure.
-  const effectiveSd =
-    headlineBasis === "worn-only"
-      ? sd
-      : conditions?.reliable
-        ? conditions.withinSd
-        : sd;
+
+  // Deviation of each headline reading from what it should be: its own
+  // position's mean where positions are known, otherwise the overall mean.
+  // A worn-only headline is already a single condition.
+  const residualByDate =
+    headlineBasis === "worn-only" || !conditions?.reliable
+      ? null
+      : new Map(conditions.residuals.map((r) => [r.date, r.value]));
+  const deviations = headlineSamples.map(
+    (s) => residualByDate?.get(s.date) ?? s.spd - avg
+  );
+
+  // Instability measured robustly, so a stopped watch or an unflagged reset
+  // cannot pass itself off as a movement that scatters.
+  const effectiveSd = robustScatter(deviations);
+
+  // Readings far outside that scatter are almost certainly bad data rather
+  // than the movement misbehaving — surfaced so they can be checked.
+  const outlierCut = Math.max(effectiveSd * 4, 5);
+  const outliers = headlineSamples
+    .map((s, i) => ({ date: s.date, spd: s.spd, dev: Math.abs(deviations[i]) }))
+    .filter((o) => o.dev > outlierCut)
+    .map(({ date, spd }) => ({ date, spd }));
 
   // Scores. Performance: |avg| of 0 → 100, 30 s/d → 0 (log-ish curve).
   const perf = Math.max(0, Math.min(100, 100 * (1 - Math.log10(1 + Math.abs(avg) * 3) / Math.log10(91))));
@@ -442,8 +518,13 @@ export function computeStats(
     monthlyVariance: w30.length >= 2 ? variance(w30.map((s) => s.spd)) : null,
     rolling7: w7.length ? mean(w7.map((s) => s.spd)) : null,
     rolling30: w30.length ? mean(w30.map((s) => s.spd)) : null,
-    driftTrend: slope(pts),
+    driftTrend: driftFit.slope,
+    driftPerMonth: driftFit.slope * 30,
+    // Only believe a trend that stands clear of the scatter it was fitted
+    // through — noisy readings throw up apparent trends by themselves.
+    driftSignificant: Math.abs(driftFit.t) >= 2 && headlineSamples.length >= 10,
     accuracyTrend: slope(absPts),
+    outliers,
     performanceScore: perf,
     stabilityScore: stab,
     consistencyIndex: Math.round(within1sd * 100),

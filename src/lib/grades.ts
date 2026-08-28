@@ -192,7 +192,7 @@ export function daysSince(iso: string | null): number | null {
 export interface HealthResult {
   score: number; // 0-100
   label: HealthLabel;
-  components: { name: string; score: number; weight: number }[];
+  components: { name: string; score: number; weight: number; note?: string }[];
   /** why this label, in plain language */
   reason: string;
 }
@@ -263,15 +263,21 @@ export function healthScore(
     ? (100 * deviations.filter((d) => d <= expected * 2).length) / deviations.length
     : 50;
 
-  // Drift: is the rate itself moving? Judged against the movement's own
-  // scatter — a change of a few s/d per month is noise on a workhorse and a
-  // red flag on a chronometer. Too few readings to tell → stay neutral rather
-  // than punish a short history, where the slope is mostly noise.
-  const driftPerMonth = Math.abs(stats.accuracyTrend ?? 0) * 30;
-  const drift =
-    stats.samples.length < 10
-      ? 75
-      : Math.max(0, Math.min(100, 100 * (1 - driftPerMonth / (expected * 2))));
+  // Drift: is the rate itself actually moving?
+  //
+  // A slope fitted through scattered readings is mostly noise — at ±60 s/d it
+  // produces an apparent half-second-a-day trend out of nothing. So a trend
+  // only counts against the watch when it stands clear of that scatter, and
+  // a rate heading back toward the centre of spec is improvement, not decay.
+  const driftPerMonth = stats.driftPerMonth ?? 0;
+  const drift = (() => {
+    if (stats.headlineSamples.length < 10) return 75; // too little to tell
+    if (!stats.driftSignificant) return 95; // nothing above the noise
+    const raw = Math.max(0, Math.min(100, 100 * (1 - Math.abs(driftPerMonth) / (expected * 2))));
+    const centre = spec ? (spec.min + spec.max) / 2 : 0;
+    const movingAway = (stats.avgSpd - centre) * driftPerMonth > 0;
+    return movingAway ? raw : Math.max(70, raw);
+  })();
 
   // Service age. A real service record is authoritative; failing that, the
   // purchase date stands in — "never serviced since bought" is the relevant
@@ -296,11 +302,33 @@ export function healthScore(
         : Math.max(30, Math.min(100, 40 + stats.wearRatio * 60));
 
   const components = [
-    { name: "Accuracy", score: perf, weight: 0.28 },
-    { name: "Stability", score: stab, weight: 0.24 },
-    { name: "Consistency", score: cons, weight: 0.13 },
-    { name: "Drift trend", score: drift, weight: 0.15 },
-    { name: "Service age", score: serviceAge, weight: 0.12 },
+    {
+      name: "Accuracy", score: perf, weight: 0.28,
+      note: spec ? `avg ${stats.avgSpd > 0 ? "+" : ""}${stats.avgSpd.toFixed(1)} vs ${fmtBand(spec)}` : undefined,
+    },
+    {
+      name: "Stability", score: stab, weight: 0.24,
+      note: `±${sd.toFixed(1)} s/d within position · normal for this movement ±${expected.toFixed(1)}`,
+    },
+    {
+      name: "Consistency", score: cons, weight: 0.13,
+      note: `${Math.round(cons)}% of readings inside that range`,
+    },
+    {
+      name: "Drift trend", score: drift, weight: 0.15,
+      note:
+        stats.headlineSamples.length < 10
+          ? "not enough readings to tell yet"
+          : !stats.driftSignificant
+            ? "no trend above the noise"
+            : `${driftPerMonth > 0 ? "+" : ""}${driftPerMonth.toFixed(1)} s/d per month`,
+    },
+    {
+      name: "Service age", score: serviceAge, weight: 0.12,
+      note: sinceService == null
+        ? "no service or purchase date recorded"
+        : `${(sinceService / 365).toFixed(1)} years since ${realService ? "last service" : "purchase"}`,
+    },
     { name: "Wear pattern", score: wear, weight: 0.08 },
   ];
   const score = Math.round(
