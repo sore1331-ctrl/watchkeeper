@@ -6,35 +6,31 @@ import React, { useMemo } from "react";
 import Link from "next/link";
 import { Plus, Watch as WatchIcon } from "lucide-react";
 import { useStore } from "@/lib/store";
-import { computeStats, fmtSpd } from "@/lib/stats";
-import { accuracyGrade, daysSince, healthScore, lastServiceDate, rateSpecFor } from "@/lib/grades";
+import { fmtSpd } from "@/lib/stats";
+import { daysSince, lastServiceDate } from "@/lib/grades";
 import { fmtMoney, fmtDate, fmtTotal } from "@/lib/utils";
 import { WatchDialog } from "@/components/forms";
 import { GradeBadge, HealthBadge, SectionTitle, StatCard } from "@/components/widgets";
 import { Button, Card, Skeleton } from "@/components/ui";
 
 export default function WatchesPage() {
-  const { ready, watches, measurementsFor, servicesFor, settings } = useStore();
+  const { ready, watches, analysisFor, servicesFor, settings } = useStore();
   const active = watches.filter((w) => !w.archived);
 
   const rows = useMemo(
     () =>
       active.map((w) => {
-        const ms = measurementsFor(w.id);
-        const stats = computeStats(ms, { powerReserveHours: w.powerReserveHours, restingReadings: settings.restingReadings });
+        const { stats, health, grade } = analysisFor(w.id)!;
         const services = servicesFor(w.id);
-        const health = healthScore(w, stats, services);
         return {
           watch: w,
           stats,
           health,
-          grade: accuracyGrade(
-            stats.avgSpd, w.movementType, w.coscCertified, stats.gradableCount, rateSpecFor(w)
-          ),
+          grade,
           sinceService: daysSince(lastServiceDate(services) ?? w.purchaseDate ?? null),
         };
       }),
-    [active, measurementsFor, servicesFor]
+    [active, analysisFor, servicesFor]
   );
 
   const agg = useMemo(() => {

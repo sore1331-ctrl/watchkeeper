@@ -75,6 +75,8 @@ export interface WatchStats {
   consistencyIndex: number | null;
   /** 95% confidence interval around avg spd */
   confidence95: [number, number] | null;
+  /** ± uncertainty on the average rate, s/d — how sharp that figure really is */
+  avgSpdError: number | null;
   /** predicted total deviation from today's offset after N days */
   predicted: { d7: number; d14: number; d30: number; d90: number } | null;
   /** ratio of samples within 1 stddev of mean */
@@ -188,6 +190,26 @@ export function slope(points: { x: number; y: number }[]): number {
  * past "broken" for any movement.
  */
 export const IMPLAUSIBLE_SPD = 300;
+
+/**
+ * How precisely a single dial reading can be taken, in seconds. Reading a
+ * seconds hand against a clock is good to roughly half a second; two readings
+ * make an interval, so their errors combine.
+ */
+export const READING_ERROR_S = 0.5;
+const INTERVAL_ERROR_S = READING_ERROR_S * Math.SQRT2;
+
+/**
+ * Uncertainty in a rate, in s/d, from reading error alone.
+ *
+ * The same half-second of imprecision becomes ±1.2 s/d over a fourteen-hour
+ * gap and ±0.14 s/d over a week — which is why a chart of overnight readings
+ * looks so much jumpier than one built from weekly checks, with no change in
+ * the watch whatsoever.
+ */
+export function rateUncertainty(gapDays: number): number {
+  return gapDays > 0 ? INTERVAL_ERROR_S / gapDays : Infinity;
+}
 
 export interface ExcludedSample {
   date: string;
@@ -444,7 +466,8 @@ export function computeStats(
     rolling7: null, rolling30: null, driftTrend: null,
     driftPerMonth: null, driftSignificant: false, accuracyTrend: null,
     performanceScore: null, stabilityScore: null, consistencyIndex: null,
-    confidence95: null, predicted: null, stabilityPct: null, wearRatio: null,
+    confidence95: null, avgSpdError: null, predicted: null,
+    stabilityPct: null, wearRatio: null,
     samples,
     headlineSamples,
     headlineBasis,
@@ -458,8 +481,26 @@ export function computeStats(
   // Everything below describes the headline set. Charts and the position
   // breakdown still read `samples`, so no reading disappears from view.
   const spds = headlineSamples.map((s) => s.spd);
-  const avg = mean(spds);
+
+  // Weight each reading by how precisely it could be measured. A rate taken
+  // over an hour carries far more reading error than one taken over a week,
+  // so treating them as equal lets the noisiest readings pull the average
+  // around. Weights are capped so a single very long interval cannot become
+  // the only reading that counts.
+  const rawWeights = headlineSamples.map((s) => {
+    const u = rateUncertainty(s.gapHours / 24);
+    return Number.isFinite(u) && u > 0 ? 1 / (u * u) : 0;
+  });
+  const medianWeight = median(rawWeights.filter((w) => w > 0)) || 1;
+  const weights = rawWeights.map((w) => Math.min(w, medianWeight * 20));
+  const totalWeight = weights.reduce((a, b) => a + b, 0);
+  const avg =
+    totalWeight > 0
+      ? spds.reduce((a, x, i) => a + x * weights[i], 0) / totalWeight
+      : mean(spds);
   const sd = stdDev(spds);
+  // Uncertainty of that weighted average from reading error alone.
+  const avgSpdError = totalWeight > 0 ? Math.sqrt(1 / totalWeight) : null;
   const t0 = +new Date(headlineSamples[0].date);
   const pts = headlineSamples.map((s) => ({ x: (+new Date(s.date) - t0) / DAY_MS, y: s.spd }));
   const absPts = headlineSamples.map((s) => ({ x: (+new Date(s.date) - t0) / DAY_MS, y: Math.abs(s.spd) }));
@@ -550,7 +591,13 @@ export function computeStats(
     performanceScore: perf,
     stabilityScore: stab,
     consistencyIndex: Math.round(consistent * 100),
-    confidence95: [avg - 1.96 * se, avg + 1.96 * se],
+    // Widen the interval by the reading error as well as the spread, so it
+    // reflects both how much the watch varies and how well it was measured.
+    confidence95: [
+      avg - 1.96 * Math.hypot(se, avgSpdError ?? 0),
+      avg + 1.96 * Math.hypot(se, avgSpdError ?? 0),
+    ],
+    avgSpdError,
     predicted: {
       d7: off + rate * 7,
       d14: off + rate * 14,

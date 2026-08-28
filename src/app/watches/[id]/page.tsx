@@ -10,12 +10,12 @@ import {
 } from "lucide-react";
 import { useStore } from "@/lib/store";
 import {
-  computeStats, detectAnomaly, fmtSec, fmtSpd, groupByPeriod, IMPLAUSIBLE_SPD, rollingAverage,
+  fmtSec, fmtSpd, groupByPeriod, IMPLAUSIBLE_SPD, rollingAverage,
 } from "@/lib/stats";
 import {
-  accuracyGrade, batteryRemaining, daysSince, healthExplanation, healthScore,
+  batteryRemaining, daysSince,
   lastServiceDate, MIN_MEASUREMENTS_FOR_GRADE, nextServiceEstimate,
-  rateSpecFor,
+
 } from "@/lib/grades";
 import { fmtDate, fmtDateTime, fmtMoney } from "@/lib/utils";
 import { MeasurementDialog, ServiceDialog, WatchDialog } from "@/components/forms";
@@ -35,14 +35,16 @@ export default function WatchDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const store = useStore();
-  const { ready, watches, measurementsFor, servicesFor, insights, deleteWatch, settings } = store;
+  const { ready, watches, measurementsFor, servicesFor, analysisFor, insights, deleteWatch } = store;
   const watch = watches.find((w) => w.id === id);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const data = useMemo(() => {
     if (!watch) return null;
     const ms = measurementsFor(watch.id);
-    const stats = computeStats(ms, { powerReserveHours: watch.powerReserveHours, restingReadings: settings.restingReadings });
+    // one shared analysis — see lib/analysis
+    const analysis = analysisFor(watch.id)!;
+    const { stats, spec, grade, health, anomaly } = analysis;
     const services = servicesFor(watch.id);
     const rolling7 = rollingAverage(stats.samples, 7);
     const rolling30 = rollingAverage(stats.samples, 30);
@@ -75,17 +77,11 @@ export default function WatchDetailPage() {
       .filter((s) => s.temperatureC != null)
       .map((s) => ({ temperatureC: s.temperatureC!, spd: +s.spd.toFixed(2) }));
     return {
-      ms, stats, services,
-      health: healthScore(watch, stats, services),
-      spec: rateSpecFor(watch),
-      grade: accuracyGrade(
-        stats.avgSpd, watch.movementType, watch.coscCertified, stats.gradableCount, rateSpecFor(watch)
-      ),
-      anomaly: detectAnomaly(stats.headlineSamples),
+      ms, stats, services, health, spec, grade, anomaly,
       chartData, weekly, monthly, forecast, history, wearByDay, tempData,
       corrections: ms.filter((m) => m.timeAdjusted).map((m) => m.measuredAt),
     };
-  }, [watch, measurementsFor, servicesFor]);
+  }, [watch, measurementsFor, servicesFor, analysisFor]);
 
   if (!ready) return <Skeleton className="h-96" />;
   if (!watch || !data) {

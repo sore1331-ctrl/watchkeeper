@@ -17,6 +17,7 @@ import { detectCurrency, uid } from "./utils";
 import { getSupabase } from "./supabase/client";
 import * as repo from "./supabase/repo";
 import { mergeCollection, touch } from "./sync";
+import { analyzeWatch, type WatchAnalysis } from "./analysis";
 import { findCatalogModel } from "./watch-catalog";
 
 /** Accent colours assigned to new watches, in order. */
@@ -77,6 +78,12 @@ interface StoreValue {
   insights: Insight[];
   measurementsFor: (watchId: string) => Measurement[];
   servicesFor: (watchId: string) => ServiceRecord[];
+  /**
+   * The finished analysis for a watch — stats, spec, grade, health, anomaly.
+   * Pages should use this rather than assembling their own, so every screen
+   * necessarily agrees.
+   */
+  analysisFor: (watchId: string) => WatchAnalysis | null;
   addWatch: (w: Omit<Watch, "id">) => Watch;
   updateWatch: (id: string, patch: Partial<Watch>) => void;
   deleteWatch: (id: string) => void;
@@ -370,6 +377,17 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         (byWatch.get(id) ?? []).slice().sort((a, b) => +new Date(a.measuredAt) - +new Date(b.measuredAt)),
       servicesFor: (id) =>
         (svcByWatch.get(id) ?? []).slice().sort((a, b) => a.date.localeCompare(b.date)),
+      analysisFor: (id) => {
+        const w = s.watches.find((x) => x.id === id);
+        if (!w) return null;
+        const ms = (byWatch.get(id) ?? [])
+          .slice()
+          .sort((a, b) => +new Date(a.measuredAt) - +new Date(b.measuredAt));
+        const svcs = (svcByWatch.get(id) ?? [])
+          .slice()
+          .sort((a, b) => a.date.localeCompare(b.date));
+        return analyzeWatch(w, ms, svcs, s.settings);
+      },
       addWatch: (w) => {
         const created: Watch = touch({ ...w, id: uid() });
         mutate((st) => ({ ...st, demo: false, watches: [...st.watches, created] }));

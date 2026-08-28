@@ -4,8 +4,8 @@
 
 import React, { useMemo, useState } from "react";
 import { useStore } from "@/lib/store";
-import { computeStats, groupByPeriod, rollingAverage } from "@/lib/stats";
-import { rateSpecFor } from "@/lib/grades";
+import { groupByPeriod, rollingAverage } from "@/lib/stats";
+import { analyzeWatch } from "@/lib/analysis";
 import {
   AccuracyHeatmap, OffsetChart, PeriodBars, PredictionChart, RateChart,
   TempScatter, WearFrequencyChart,
@@ -31,8 +31,11 @@ export default function AnalyticsPage() {
   const data = useMemo(() => {
     if (!watch) return null;
     const cutoff = Date.now() - rangeDays * DAY_MS;
+    // Analytics windows the data, so it computes stats over the filtered set
+    // rather than reusing the whole-history analysis — but through the same
+    // shared function, with the same options, so the two always agree.
     const ms = measurementsFor(watch.id).filter((m) => +new Date(m.measuredAt) > cutoff);
-    const stats = computeStats(ms, { powerReserveHours: watch.powerReserveHours, restingReadings: settings.restingReadings });
+    const { stats, spec } = analyzeWatch(watch, ms, servicesFor(watch.id), settings);
     const r7 = rollingAverage(stats.samples, 7);
     const r30 = rollingAverage(stats.samples, 30);
     const chartData = stats.samples.map((s, i) => ({
@@ -56,7 +59,7 @@ export default function AnalyticsPage() {
       count: ms.filter((m) => m.wornToday && (new Date(m.measuredAt).getDay() + 6) % 7 === i).length,
     }));
     return {
-      stats, chartData, forecast, spec: rateSpecFor(watch),
+      stats, chartData, forecast, spec,
       weekly: groupByPeriod(stats.samples, "week"),
       monthly: groupByPeriod(stats.samples, "month"),
       history: stats.samples.slice(-45).map((s) => ({ date: s.date, offset: +s.offset.toFixed(1) })),

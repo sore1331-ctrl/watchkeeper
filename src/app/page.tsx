@@ -6,10 +6,10 @@ import React, { useMemo, useState } from "react";
 import Link from "next/link";
 import { ArrowRight, Battery, CalendarClock, Gauge, Watch as WatchIcon } from "lucide-react";
 import { useStore } from "@/lib/store";
-import { computeStats, fmtSpd, fmtSec, rollingAverage } from "@/lib/stats";
+import { fmtSpd, fmtSec, rollingAverage } from "@/lib/stats";
 import {
-  accuracyGrade, batteryRemaining, daysSince, healthExplanation, healthScore,
-  lastRegulationDate, lastServiceDate, MIN_MEASUREMENTS_FOR_GRADE, rateSpecFor,
+  batteryRemaining, daysSince,
+  lastRegulationDate, lastServiceDate, MIN_MEASUREMENTS_FOR_GRADE,
 } from "@/lib/grades";
 import { fmtTotal, relTime } from "@/lib/utils";
 import { MeasurementDialog } from "@/components/forms";
@@ -21,7 +21,7 @@ import { Card, Skeleton } from "@/components/ui";
 
 export default function DashboardPage() {
   const store = useStore();
-  const { ready, watches, measurementsFor, servicesFor, insights, settings } = store;
+  const { ready, watches, measurementsFor, servicesFor, analysisFor, insights } = store;
   const active = watches.filter((w) => !w.archived);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const watch = active.find((w) => w.id === selectedId) ?? active[0];
@@ -29,13 +29,8 @@ export default function DashboardPage() {
   const data = useMemo(() => {
     if (!watch) return null;
     const ms = measurementsFor(watch.id);
-    const stats = computeStats(ms, { powerReserveHours: watch.powerReserveHours, restingReadings: settings.restingReadings });
+    const { stats, spec, grade, health } = analysisFor(watch.id)!;
     const services = servicesFor(watch.id);
-    const health = healthScore(watch, stats, services);
-    const spec = rateSpecFor(watch);
-    const grade = accuracyGrade(
-      stats.avgSpd, watch.movementType, watch.coscCertified, stats.gradableCount, spec
-    );
     const rolling = rollingAverage(stats.samples, 7);
     const chartData = stats.samples.map((s, i) => ({
       date: s.date, spd: +s.spd.toFixed(2), rolling7: +rolling[i].value.toFixed(2), offset: s.offset,
@@ -196,8 +191,7 @@ export default function DashboardPage() {
       </SectionTitle>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         {active.map((w) => {
-          const s = computeStats(measurementsFor(w.id), { powerReserveHours: w.powerReserveHours, restingReadings: settings.restingReadings });
-          const g = accuracyGrade(s.avgSpd, w.movementType, w.coscCertified, s.gradableCount, rateSpecFor(w));
+          const { stats: s, grade: g } = analysisFor(w.id)!;
           return (
             <Link key={w.id} href={`/watches/${w.id}`}>
               <Card className="group cursor-pointer p-4 transition-colors hover:border-accent/40">

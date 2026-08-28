@@ -4,15 +4,14 @@
 
 import React, { useMemo, useState } from "react";
 import { useStore } from "@/lib/store";
-import { computeStats, fmtSpd, isoWeekKey, rollingAverage } from "@/lib/stats";
-import { accuracyGrade, healthScore, rateSpecFor } from "@/lib/grades";
+import { fmtSpd, isoWeekKey, rollingAverage } from "@/lib/stats";
 import { CompareChart, type SeriesPoint } from "@/components/charts";
 import { ChartCard, GradeBadge, HealthBadge } from "@/components/widgets";
 import { Card, Skeleton } from "@/components/ui";
 import { cn, fmtMoney } from "@/lib/utils";
 
 export default function ComparePage() {
-  const { ready, watches, measurementsFor, servicesFor, settings } = useStore();
+  const { ready, watches, analysisFor, servicesFor } = useStore();
   const active = watches.filter((w) => !w.archived);
   const [selected, setSelected] = useState<string[]>([]);
   // Any explicit selection is honoured, including a single watch. Only an
@@ -25,19 +24,10 @@ export default function ComparePage() {
       active
         .filter((w) => ids.includes(w.id))
         .map((w) => {
-          const ms = measurementsFor(w.id);
-          const stats = computeStats(ms, { powerReserveHours: w.powerReserveHours, restingReadings: settings.restingReadings });
-          return {
-            watch: w, stats,
-            health: healthScore(w, stats, servicesFor(w.id)),
-            spec: rateSpecFor(w),
-            grade: accuracyGrade(
-              stats.avgSpd, w.movementType, w.coscCertified, stats.gradableCount, rateSpecFor(w)
-            ),
-            services: servicesFor(w.id),
-          };
+          const { stats, health, spec, grade } = analysisFor(w.id)!;
+          return { watch: w, stats, health, spec, grade, services: servicesFor(w.id) };
         }),
-    [active, ids, measurementsFor, servicesFor]
+    [active, ids, analysisFor, servicesFor]
   );
 
   // merge rolling-7 series onto a shared weekly time axis

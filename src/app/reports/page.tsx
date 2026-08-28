@@ -6,9 +6,9 @@ import React, { useMemo, useState } from "react";
 import { Download, FileText, Printer } from "lucide-react";
 import { useStore } from "@/lib/store";
 import {
-  computeStats, fmtSpd, groupByPeriod, mean, stdDev, variance,
+  fmtSpd, groupByPeriod, mean, stdDev, variance,
 } from "@/lib/stats";
-import { accuracyGrade, expectedScatter, healthScore, nextServiceEstimate, rateSpecFor } from "@/lib/grades";
+import { expectedScatter, nextServiceEstimate } from "@/lib/grades";
 import { GradeBadge, HealthBadge, SectionTitle, StatCard } from "@/components/widgets";
 import { Button, Card, Skeleton, Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui";
 import { csvField, exportMeasurementsCsv } from "@/components/measurements-table";
@@ -25,7 +25,7 @@ function download(name: string, mime: string, content: string) {
 
 export default function ReportsPage() {
   const store = useStore();
-  const { ready, watches, measurementsFor, servicesFor, settings } = store;
+  const { ready, watches, measurementsFor, servicesFor, analysisFor } = store;
   const active = watches.filter((w) => !w.archived);
   const [watchId, setWatchId] = useState<string | null>(null);
   const watch = active.find((w) => w.id === watchId) ?? active[0];
@@ -33,13 +33,8 @@ export default function ReportsPage() {
   const report = useMemo(() => {
     if (!watch) return null;
     const ms = measurementsFor(watch.id);
-    const stats = computeStats(ms, { powerReserveHours: watch.powerReserveHours, restingReadings: settings.restingReadings });
+    const { stats, spec, grade, health } = analysisFor(watch.id)!;
     const services = servicesFor(watch.id);
-    const health = healthScore(watch, stats, services);
-    const spec = rateSpecFor(watch);
-    const grade = accuracyGrade(
-      stats.avgSpd, watch.movementType, watch.coscCertified, stats.gradableCount, spec
-    );
 
     // Weekly summary (last full 7 days)
     const end = stats.lastMeasuredAt ? +new Date(stats.lastMeasuredAt) : Date.now();
@@ -101,7 +96,7 @@ export default function ReportsPage() {
 
     return { ms, stats, services, health, grade, spec, weekly, monthly, suggestions,
       nextService: nextServiceEstimate(watch, services) };
-  }, [watch, measurementsFor, servicesFor]);
+  }, [watch, measurementsFor, servicesFor, analysisFor]);
 
   if (!ready || !watch || !report) return <Skeleton className="h-96" />;
 
@@ -118,9 +113,7 @@ export default function ReportsPage() {
   const exportCollectionCsv = () => {
     const header = "brand,model,reference,movement,caliber,avg_spd,std_dev,variance,grade,health,measurements";
     const rows = active.map((w) => {
-      const s = computeStats(measurementsFor(w.id), { powerReserveHours: w.powerReserveHours, restingReadings: settings.restingReadings });
-      const h = healthScore(w, s, servicesFor(w.id));
-      const g = accuracyGrade(s.avgSpd, w.movementType, w.coscCertified, s.gradableCount, rateSpecFor(w));
+      const { stats: s, health: h, grade: g } = analysisFor(w.id)!;
       return [w.brand, w.model, w.reference ?? "", w.movementType, w.caliber ?? "",
         s.avgSpd?.toFixed(2) ?? "", s.stdDev?.toFixed(2) ?? "", s.variance?.toFixed(2) ?? "",
         g ?? "", h?.score ?? "", s.count].map(csvField).join(",");
