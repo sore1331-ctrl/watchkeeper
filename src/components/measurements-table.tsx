@@ -7,7 +7,10 @@ import {
   createColumnHelper, flexRender, getCoreRowModel, getPaginationRowModel,
   getSortedRowModel, useReactTable, type SortingState,
 } from "@tanstack/react-table";
-import { ArrowUpDown, Check, ChevronLeft, ChevronRight, Download, Pencil, Trash2 } from "lucide-react";
+import {
+  AlertTriangle, ArrowUpDown, Check, ChevronLeft, ChevronRight, Download,
+  Eye, EyeOff, Pencil, Trash2,
+} from "lucide-react";
 import type { Measurement, Watch } from "@/lib/types";
 import { useStore } from "@/lib/store";
 import { rateSamples } from "@/lib/stats";
@@ -36,7 +39,7 @@ export function csvField(v: unknown): string {
 export function exportMeasurementsCsv(watch: Watch, ms: Measurement[]) {
   const samples = rateSamples(ms);
   const spdByDate = new Map(samples.map((s) => [s.date, s.spd]));
-  const header = "date,reference_time,watch_time,offset_s,rate_spd,temperature_c,position,power_reserve_pct,worn,time_corrected,notes";
+  const header = "date,reference_time,watch_time,offset_s,rate_spd,temperature_c,position,power_reserve_pct,worn,time_corrected,excluded,notes";
   const rows = ms.map((m) =>
     [
       m.measuredAt, m.referenceTime, m.watchTime, m.offsetSeconds,
@@ -44,6 +47,7 @@ export function exportMeasurementsCsv(watch: Watch, ms: Measurement[]) {
       m.temperatureC ?? "", m.position ?? "", m.powerReservePct ?? "",
       m.wornToday ? 1 : 0,
       m.timeAdjusted ? 1 : 0,
+      m.excludeFromRate ? 1 : 0,
       m.notes ?? "",
     ].map(csvField).join(",")
   );
@@ -55,12 +59,15 @@ export function exportMeasurementsCsv(watch: Watch, ms: Measurement[]) {
 }
 
 export function MeasurementsTable({
-  watch, measurements,
+  watch, measurements, outlierDates = [],
 }: {
   watch: Watch;
   measurements: Measurement[];
+  /** readings whose rate sits far outside the movement's normal scatter */
+  outlierDates?: string[];
 }) {
-  const { deleteMeasurement } = useStore();
+  const { deleteMeasurement, updateMeasurement } = useStore();
+  const outliers = useMemo(() => new Set(outlierDates), [outlierDates]);
   const [sorting, setSorting] = useState<SortingState>([{ id: "measuredAt", desc: true }]);
   const [editing, setEditing] = useState<Measurement | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
@@ -101,9 +108,23 @@ export function MeasurementsTable({
         header: "Rate",
         cell: (c) => {
           const v = c.getValue();
-          if (c.row.original.timeAdjusted)
+          const m = c.row.original;
+          if (m.excludeFromRate)
+            return <Badge color="var(--info)">not counted</Badge>;
+          if (m.timeAdjusted)
             return <Badge color="var(--warning)">time corrected</Badge>;
           if (v == null) return <span className="text-faint">—</span>;
+          if (outliers.has(m.measuredAt))
+            return (
+              <span className="flex items-center gap-1.5">
+                <span className="tabular-nums text-critical">
+                  {v > 0 ? "+" : ""}{v.toFixed(1)} s/d
+                </span>
+                <span title="Far outside this movement's normal scatter — worth checking">
+                  <AlertTriangle className="h-3.5 w-3.5 text-warning" />
+                </span>
+              </span>
+            );
           const color = Math.abs(v) <= 5 ? "var(--positive)" : Math.abs(v) <= 12 ? "var(--warning)" : "var(--critical)";
           return (
             <span className="tabular-nums" style={{ color }}>
@@ -132,6 +153,29 @@ export function MeasurementsTable({
         id: "actions",
         cell: (c) => (
           <div className="flex items-center gap-0.5">
+            <button
+              onClick={() =>
+                updateMeasurement(c.row.original.id, {
+                  excludeFromRate: !c.row.original.excludeFromRate,
+                })
+              }
+              className={`cursor-pointer rounded p-1 ${
+                c.row.original.excludeFromRate
+                  ? "text-info"
+                  : "text-faint hover:text-info"
+              }`}
+              title={
+                c.row.original.excludeFromRate
+                  ? "Not counted — click to count this period again"
+                  : "Counted — click to leave this period out of the rate"
+              }
+            >
+              {c.row.original.excludeFromRate ? (
+                <EyeOff className="h-3.5 w-3.5" />
+              ) : (
+                <Eye className="h-3.5 w-3.5" />
+              )}
+            </button>
             <button
               onClick={() => setEditing(c.row.original)}
               className="cursor-pointer rounded p-1 text-faint hover:text-accent"
@@ -164,7 +208,7 @@ export function MeasurementsTable({
       }),
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [deleteMeasurement, confirmDelete]
+    [deleteMeasurement, updateMeasurement, confirmDelete, outliers]
   );
 
   const table = useReactTable({
@@ -227,7 +271,11 @@ export function MeasurementsTable({
           </thead>
           <tbody>
             {table.getRowModel().rows.map((r) => (
-              <tr key={r.id} className="border-b border-border-token/50 hover:bg-surface-2/50">
+              <tr key={r.id}
+                className={`border-b border-border-token/50 hover:bg-surface-2/50 ${
+                  r.original.excludeFromRate ? "opacity-50" : ""
+                }`}
+              >
                 {r.getVisibleCells().map((c) => (
                   <td key={c.id} className="px-4 py-2.5">
                     {flexRender(c.column.columnDef.cell, c.getContext())}

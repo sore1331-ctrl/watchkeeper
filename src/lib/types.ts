@@ -86,6 +86,13 @@ export interface Measurement extends Synced {
    * sample is produced for it — otherwise a −60s reset reads as a wild rate.
    */
   timeAdjusted?: boolean;
+  /**
+   * Leave the period since the previous reading out of the rate analysis.
+   * The reading itself is kept and still charted — this only says "don't
+   * treat what happened before it as timekeeping", for a night on the
+   * nightstand, a knock, a demagnetising, or anything else unrepresentative.
+   */
+  excludeFromRate?: boolean;
   notes?: string;
   photoUrl?: string;
 }

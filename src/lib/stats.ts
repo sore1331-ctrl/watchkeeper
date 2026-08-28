@@ -192,7 +192,7 @@ export const IMPLAUSIBLE_SPD = 300;
 export interface ExcludedSample {
   date: string;
   spd: number;
-  reason: "time-corrected" | "implausible" | "ran-down";
+  reason: "time-corrected" | "implausible" | "ran-down" | "excluded-by-you";
 }
 
 /**
@@ -231,7 +231,8 @@ export function excludedSamples(
     const gapMs = +new Date(ms[i].measuredAt) - +new Date(ms[i - 1].measuredAt);
     if (gapMs < 3_600_000) continue;
     const spd = (ms[i].offsetSeconds - ms[i - 1].offsetSeconds) / (gapMs / DAY_MS);
-    if (ms[i].timeAdjusted) out.push({ date: ms[i].measuredAt, spd, reason: "time-corrected" });
+    if (ms[i].excludeFromRate) out.push({ date: ms[i].measuredAt, spd, reason: "excluded-by-you" });
+    else if (ms[i].timeAdjusted) out.push({ date: ms[i].measuredAt, spd, reason: "time-corrected" });
     else if (Math.abs(spd) > IMPLAUSIBLE_SPD)
       out.push({ date: ms[i].measuredAt, spd, reason: "implausible" });
     else if (ranDown(ms[i - 1], gapMs / 3_600_000, powerReserveHours))
@@ -258,6 +259,8 @@ export function rateSamples(
     // The watch was corrected across this gap: the offset change is the
     // correction the user made, not how the movement ran. No rate here.
     if (cur.timeAdjusted) continue;
+    // You told us this period isn't representative.
+    if (cur.excludeFromRate) continue;
 
     const gapDays = gapMs / DAY_MS;
     const spd = (cur.offsetSeconds - prev.offsetSeconds) / gapDays;
@@ -485,10 +488,22 @@ export function computeStats(
   const effectiveSd = robustScatter(deviations);
 
   // Readings far outside that scatter are almost certainly bad data rather
-  // than the movement misbehaving — surfaced so they can be checked.
-  const outlierCut = Math.max(effectiveSd * 4, 5);
-  const outliers = headlineSamples
-    .map((s, i) => ({ date: s.date, spd: s.spd, dev: Math.abs(deviations[i]) }))
+  // than the movement misbehaving — surfaced so they can be checked. Hunted
+  // across every sample, not just the headline set: a suspect reading is worth
+  // knowing about whether the watch was on a wrist or a nightstand.
+  const allResiduals = conditions?.reliable
+    ? new Map(conditions.residuals.map((r) => [r.date, r.value]))
+    : null;
+  const allDeviations = samples.map(
+    (s) => allResiduals?.get(s.date) ?? s.spd - mean(samples.map((x) => x.spd))
+  );
+  // Four times the robust scatter, but never less than 15 s/d — the point is
+  // to catch stoppages and resets, not to nag about a good watch having a
+  // slightly odd day.
+  const outlierScale = robustScatter(allDeviations);
+  const outlierCut = Math.max(outlierScale * 4, 15);
+  const outliers = samples
+    .map((s, i) => ({ date: s.date, spd: s.spd, dev: Math.abs(allDeviations[i]) }))
     .filter((o) => o.dev > outlierCut)
     .map(({ date, spd }) => ({ date, spd }));
 

@@ -213,6 +213,7 @@ export function MeasurementDialog({
     powerReservePct: "",
     wornToday: true,
     timeAdjusted: false,
+    excludeFromRate: false,
     notes: "",
   }));
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) =>
@@ -236,6 +237,7 @@ export function MeasurementDialog({
       powerReservePct: m.powerReservePct?.toString() ?? "",
       wornToday: m.wornToday,
       timeAdjusted: !!m.timeAdjusted,
+      excludeFromRate: !!m.excludeFromRate,
       notes: m.notes ?? "",
     });
 
@@ -267,6 +269,7 @@ export function MeasurementDialog({
           watchTime: t,
           // per-reading flags must not carry over from the previous entry
           timeAdjusted: false,
+          excludeFromRate: false,
           notes: "",
         }));
       }
@@ -316,6 +319,7 @@ export function MeasurementDialog({
       powerReservePct: form.powerReservePct ? +form.powerReservePct : undefined,
       wornToday: form.wornToday,
       timeAdjusted: form.timeAdjusted || undefined,
+      excludeFromRate: form.excludeFromRate || undefined,
       notes: form.notes || undefined,
     };
 
@@ -332,7 +336,7 @@ export function MeasurementDialog({
     setForm((f) => ({
       ...f,
       referenceTime: nowHms(), watchTime: nowHms(),
-      timeAdjusted: false, notes: "",
+      timeAdjusted: false, excludeFromRate: false, notes: "",
     }));
   };
 
@@ -458,6 +462,27 @@ export function MeasurementDialog({
               {form.timeAdjusted
                 ? "This reading starts a fresh baseline. The jump caused by your correction won't be counted as drift, and no rate is calculated across it."
                 : "Tick this if you reset the hands, hacked the seconds, or adjusted the watch — otherwise the correction would look like a huge gain or loss."}
+            </p>
+          </div>
+
+          {/* Let the wearer decide what counts. The reading is always kept —
+              only the period leading up to it is left out of the maths. */}
+          <div className={`rounded-xl border p-3 transition-colors ${
+            form.excludeFromRate ? "border-info/40 bg-info/5" : "border-border-token"
+          }`}>
+            <div className="flex items-center gap-3">
+              <Switch
+                checked={form.excludeFromRate}
+                onCheckedChange={(v) => set("excludeFromRate", v)}
+              />
+              <span className="text-sm font-medium">
+                Don&apos;t count the period since the last reading
+              </span>
+            </div>
+            <p className="mt-1.5 text-[11px] leading-relaxed text-muted">
+              {form.excludeFromRate
+                ? "This reading is still recorded and still plotted — the stretch of time before it just won't count toward the rate, average or health."
+                : "For a stretch that isn't representative: a night on the nightstand you'd rather not average in, a knock, a demagnetising, or a spell you weren't wearing it."}
             </p>
           </div>
 

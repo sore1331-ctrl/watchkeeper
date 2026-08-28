@@ -6,7 +6,7 @@ import React, { useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
-  ArrowLeft, Info, Pencil, Plus, ShieldCheck, Trash2, Wrench,
+  AlertTriangle, ArrowLeft, Info, Pencil, Plus, ShieldCheck, Trash2, Wrench,
 } from "lucide-react";
 import { useStore } from "@/lib/store";
 import {
@@ -165,12 +165,41 @@ export default function WatchDetailPage() {
             <p className="mt-1 text-muted">
               {stats.excluded.some((e) => e.reason === "time-corrected") &&
                 "Intervals where you corrected the time are skipped — the jump is your adjustment, not drift. "}
+              {stats.excluded.some((e) => e.reason === "excluded-by-you") &&
+                "Some periods are left out because you marked them as not representative. "}
               {stats.excluded.some((e) => e.reason === "ran-down") &&
                 `Some intervals ran longer than the ${watch.powerReserveHours}h power reserve with the watch unworn, so the mainspring emptied partway through. A watch winding down runs slow and then stops — that is the reserve, not the movement, so those intervals are left out. `}
               {stats.excluded.some((e) => e.reason === "implausible") &&
                 `Some intervals imply an impossible rate (over ${IMPLAUSIBLE_SPD} s/d), which normally means the watch was reset or had stopped. Tick "I corrected the time" when logging those so they're recorded properly. `}
               Offsets are still plotted in full.
             </p>
+          </div>
+        </Card>
+      )}
+
+      {/* Readings that don't look like timekeeping — offered, not acted on */}
+      {stats.outliers.length > 0 && (
+        <Card className="mb-4 flex flex-wrap items-start justify-between gap-3 border-warning/30 p-4">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+            <div className="text-xs">
+              <p className="font-semibold">
+                {stats.outliers.length}{" "}
+                {stats.outliers.length === 1 ? "reading sits" : "readings sit"}{" "}
+                far outside this movement&apos;s normal scatter
+              </p>
+              <p className="mt-1 text-muted">
+                {stats.outliers
+                  .slice(0, 3)
+                  .map((o) => `${fmtDate(o.date)} (${o.spd > 0 ? "+" : ""}${o.spd.toFixed(0)} s/d)`)
+                  .join(", ")}
+                {stats.outliers.length > 3 && ` and ${stats.outliers.length - 3} more`}.
+                They are still counted — a rate like that usually means the watch
+                stopped, was reset, or the period wasn&apos;t representative. Open
+                Measurements to check them, and use the eye icon to leave any of
+                them out.
+              </p>
+            </div>
           </div>
         </Card>
       )}
@@ -362,7 +391,8 @@ export default function WatchDetailPage() {
         </TabsContent>
 
         <TabsContent value="measurements" className="mt-4">
-          <MeasurementsTable watch={watch} measurements={data.ms} />
+          <MeasurementsTable watch={watch} measurements={data.ms}
+            outlierDates={stats.outliers.map((o) => o.date)} />
         </TabsContent>
 
         <TabsContent value="service" className="mt-4 space-y-4">

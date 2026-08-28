@@ -68,6 +68,7 @@ const measurementRow = (m: Measurement, userId: string) => ({
   offset_seconds: m.offsetSeconds, temperature_c: m.temperatureC ?? null,
   position: m.position ?? null, power_reserve_pct: m.powerReservePct ?? null,
   worn_today: m.wornToday, time_adjusted: m.timeAdjusted ?? false,
+  exclude_from_rate: m.excludeFromRate ?? false,
   notes: m.notes ?? null, photo_url: m.photoUrl ?? null,
   updated_at: m.updatedAt ?? new Date().toISOString(),
 });
@@ -80,6 +81,7 @@ const toMeasurement = (r: any): Measurement => ({
   position: (r.position ?? undefined) as WatchPosition | undefined,
   powerReservePct: r.power_reserve_pct == null ? undefined : Number(r.power_reserve_pct),
   wornToday: !!r.worn_today, timeAdjusted: r.time_adjusted || undefined,
+  excludeFromRate: r.exclude_from_rate || undefined,
   notes: r.notes ?? undefined, photoUrl: r.photo_url ?? undefined,
   updatedAt: r.updated_at ?? undefined,
 });
