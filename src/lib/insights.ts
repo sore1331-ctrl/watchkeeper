@@ -192,7 +192,7 @@ export function generateInsights(
   }
 
   // Anomaly detection — on condition-adjusted residuals where possible
-  const anomaly = detectAnomaly(stats.samples);
+  const anomaly = detectAnomaly(stats.headlineSamples);
   if (anomaly?.drifting)
     out.push({
       id: nid(), watchId: watch.id, kind: "trend",
@@ -234,7 +234,7 @@ export function generateNotifications(
 
     // Only warn once there is a real evidence base, and only when the shift
     // survives adjusting for the positions the watch was kept in.
-    const anomaly = stats.count >= MIN_MEASUREMENTS_FOR_GRADE ? detectAnomaly(stats.samples) : null;
+    const anomaly = stats.count >= MIN_MEASUREMENTS_FOR_GRADE ? detectAnomaly(stats.headlineSamples) : null;
     if (anomaly?.drifting && anomaly.conditionAdjusted)
       push({
         watchId: w.id, kind: "trend-change",

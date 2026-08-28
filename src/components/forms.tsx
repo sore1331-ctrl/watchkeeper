@@ -179,6 +179,40 @@ const nowHms = () => {
   return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 };
 
+/**
+ * Live reference clock.
+ *
+ * Every figure this app produces is a difference against a reference, so the
+ * reference has to be visible and trustworthy. This ticks in real time so the
+ * seconds hand can be read against it directly — the way the measurement is
+ * actually taken — and tapping it stamps the field.
+ */
+function ReferenceClock({ onUse }: { onUse: (t: string) => void }) {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    // align to the next whole second, then tick once a second
+    const id = setInterval(() => setNow(new Date()), 250);
+    return () => clearInterval(id);
+  }, []);
+  const p = (n: number) => String(n).padStart(2, "0");
+  const text = `${p(now.getHours())}:${p(now.getMinutes())}:${p(now.getSeconds())}`;
+  return (
+    <button
+      type="button"
+      onClick={() => onUse(text)}
+      className="w-full cursor-pointer rounded-xl border border-border-token bg-surface-2/60 p-3 text-center transition-colors hover:border-accent/40"
+      title="Tap to stamp the reference field with this time"
+    >
+      <p className="text-[10px] uppercase tracking-wider text-muted">Reference clock — tap to use</p>
+      <p className="font-mono text-2xl font-bold tabular-nums">{text}</p>
+      <p className="mt-0.5 text-[10px] text-faint">
+        From this device, which syncs to a network time server. Check it against
+        time.is if you want to be certain.
+      </p>
+    </button>
+  );
+}
+
 /** ISO instant → value for <input type="datetime-local"> in local time. */
 function toLocalInput(iso: string): string {
   const d = new Date(iso);
@@ -373,10 +407,14 @@ export function MeasurementDialog({
               />
             </div>
           </div>
+          {!editing && (
+            <ReferenceClock onUse={(t) => set("referenceTime", t)} />
+          )}
+
           <div className="grid grid-cols-2 gap-3">
             <div>
               <div className="flex items-baseline justify-between">
-                <Label>Reference time (atomic)</Label>
+                <Label>Reference time</Label>
                 <button
                   type="button"
                   onClick={syncToNow}

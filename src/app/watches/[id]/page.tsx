@@ -81,7 +81,7 @@ export default function WatchDetailPage() {
       grade: accuracyGrade(
         stats.avgSpd, watch.movementType, watch.coscCertified, stats.gradableCount, rateSpecFor(watch)
       ),
-      anomaly: detectAnomaly(stats.samples),
+      anomaly: detectAnomaly(stats.headlineSamples),
       chartData, weekly, monthly, forecast, history, wearByDay, tempData,
       corrections: ms.filter((m) => m.timeAdjusted).map((m) => m.measuredAt),
     };
@@ -220,7 +220,7 @@ export default function WatchDetailPage() {
             : `variance ${stats.variance?.toFixed(2) ?? "—"} s²/d`}
           delay={0.1} />
         <StatCard label="Consistency" value={stats.consistencyIndex != null ? `${stats.consistencyIndex}%` : "—"}
-          sub="within 1σ of mean" delay={0.15} />
+          sub="of readings behaving normally" delay={0.15} />
         <StatCard label="Max gain" value={fmtSpd(stats.maxGain)} delay={0.2} />
         <StatCard label="Max loss" value={fmtSpd(stats.maxLoss)} delay={0.25} />
         <StatCard label="95% CI"

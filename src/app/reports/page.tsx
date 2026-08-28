@@ -8,7 +8,7 @@ import { useStore } from "@/lib/store";
 import {
   computeStats, fmtSpd, groupByPeriod, mean, stdDev, variance,
 } from "@/lib/stats";
-import { accuracyGrade, healthScore, nextServiceEstimate, rateSpecFor } from "@/lib/grades";
+import { accuracyGrade, expectedScatter, healthScore, nextServiceEstimate, rateSpecFor } from "@/lib/grades";
 import { GradeBadge, HealthBadge, SectionTitle, StatCard } from "@/components/widgets";
 import { Button, Card, Skeleton, Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui";
 import { csvField, exportMeasurementsCsv } from "@/components/measurements-table";
@@ -43,7 +43,9 @@ export default function ReportsPage() {
 
     // Weekly summary (last full 7 days)
     const end = stats.lastMeasuredAt ? +new Date(stats.lastMeasuredAt) : Date.now();
-    const week = stats.samples.filter((s) => +new Date(s.date) > end - 7 * DAY_MS);
+    // Summary figures follow the same basis as the dashboard, so a report and
+    // the watch page never quote different averages for the same week.
+    const week = stats.headlineSamples.filter((s) => +new Date(s.date) > end - 7 * DAY_MS);
     const weekSpds = week.map((s) => s.spd);
     const weekly = week.length >= 2 ? {
       avg: mean(weekSpds),
@@ -55,7 +57,7 @@ export default function ReportsPage() {
     } : null;
 
     // Monthly report (last 30 days)
-    const month = stats.samples.filter((s) => +new Date(s.date) > end - 30 * DAY_MS);
+    const month = stats.headlineSamples.filter((s) => +new Date(s.date) > end - 30 * DAY_MS);
     const weeks = groupByPeriod(month, "week");
     const best = weeks.length ? [...weeks].sort((a, b) => Math.abs(a.avgSpd) - Math.abs(b.avgSpd))[0] : null;
     const worst = weeks.length ? [...weeks].sort((a, b) => Math.abs(b.avgSpd) - Math.abs(a.avgSpd))[0] : null;
@@ -84,10 +86,15 @@ export default function ReportsPage() {
         );
       }
     }
-    if (weekly && weekly.sd > 3)
-      suggestions.push("Weekly σ above 3 s/d — check for magnetization or position sensitivity.");
-    if (stats.weeklyVariance != null && stats.monthlyVariance != null && stats.weeklyVariance > 2 * stats.monthlyVariance)
-      suggestions.push("Variance rising vs monthly baseline — keep a closer measurement cadence.");
+    // Judge scatter against what this movement should show, not a fixed 3 s/d:
+    // that figure is alarming on a chronometer and unremarkable on a 4R34.
+    const normalScatter = expectedScatter(spec);
+    if (weekly && weekly.sd > normalScatter * 2)
+      suggestions.push(
+        `Readings scatter ±${weekly.sd.toFixed(1)} s/d this week against ±${normalScatter.toFixed(1)} typical for this movement — check for magnetisation, or whether readings were taken at very different wind states.`
+      );
+    if (stats.weeklyVariance != null && stats.monthlyVariance != null && stats.weeklyVariance > 3 * stats.monthlyVariance)
+      suggestions.push("Variance rising against the monthly baseline — keep a closer measurement cadence.");
     if (watch.coscCertified && stats.avgSpd != null && (stats.avgSpd < -4 || stats.avgSpd > 6))
       suggestions.push("Running outside COSC — a service center can restore chronometer spec.");
     if (!suggestions.length) suggestions.push("Performance is healthy — keep the current routine.");

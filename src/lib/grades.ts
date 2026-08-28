@@ -251,17 +251,9 @@ export function healthScore(
   const stab = stabilityScoreFor(sd, spec);
   const expected = expectedScatter(spec);
 
-  // Consistency: how many readings land inside the movement's normal scatter.
-  // (The old measure — share within one standard deviation — was ~68% for any
-  // well-behaved data by definition, so it scored every watch the same.)
-  // Deviations are taken from each reading's own position where possible, so a
-  // night spent crown-down is not counted as an inconsistent reading.
-  const deviations = stats.conditions?.reliable
-    ? stats.conditions.residuals.map((r) => Math.abs(r.value))
-    : stats.samples.map((s) => Math.abs(s.spd - stats.avgSpd!));
-  const cons = deviations.length
-    ? (100 * deviations.filter((d) => d <= expected * 2).length) / deviations.length
-    : 50;
+  // Consistency: the share of readings inside the movement's normal scatter,
+  // already computed the same way for display so the two never disagree.
+  const cons = stats.consistencyIndex ?? 50;
 
   // Drift: is the rate itself actually moving?
   //

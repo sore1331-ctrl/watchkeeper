@@ -5,6 +5,7 @@
 import React, { useMemo, useState } from "react";
 import { useStore } from "@/lib/store";
 import { computeStats, groupByPeriod, rollingAverage } from "@/lib/stats";
+import { rateSpecFor } from "@/lib/grades";
 import {
   AccuracyHeatmap, OffsetChart, PeriodBars, PredictionChart, RateChart,
   TempScatter, WearFrequencyChart,
@@ -55,7 +56,7 @@ export default function AnalyticsPage() {
       count: ms.filter((m) => m.wornToday && (new Date(m.measuredAt).getDay() + 6) % 7 === i).length,
     }));
     return {
-      stats, chartData, forecast,
+      stats, chartData, forecast, spec: rateSpecFor(watch),
       weekly: groupByPeriod(stats.samples, "week"),
       monthly: groupByPeriod(stats.samples, "month"),
       history: stats.samples.slice(-45).map((s) => ({ date: s.date, offset: +s.offset.toFixed(1) })),
@@ -111,7 +112,7 @@ export default function AnalyticsPage() {
           <ChartCard title="Daily deviation & moving averages"
             sub="thin line = daily rate · bold = 7-day rolling · drag the brush to zoom">
             <RateChart data={data.chartData} color={watch.accentColor} height={340}
-              coscBand={watch.coscCertified} />
+              spec={data.spec} />
           </ChartCard>
           <ChartCard title="Seconds/day trend" sub="30-day rolling average">
             <RateChart

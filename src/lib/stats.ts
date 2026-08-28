@@ -511,7 +511,14 @@ export function computeStats(
   const perf = Math.max(0, Math.min(100, 100 * (1 - Math.log10(1 + Math.abs(avg) * 3) / Math.log10(91))));
   // Stability: σ of 0 → 100, 10 s/d → 0 — measured within condition.
   const stab = Math.max(0, Math.min(100, 100 * (1 - Math.log10(1 + effectiveSd * 2) / Math.log10(21))));
-  const within1sd = sd === 0 ? 1 : spds.filter((x) => Math.abs(x - avg) <= sd).length / spds.length;
+  // Consistency: the share of readings that behave. Measuring "within one
+  // standard deviation" scored ~68% for any well-behaved data by definition,
+  // so it said the same thing about every watch. Against the robust scatter
+  // instead, clean data scores ~95% and a set with erratic readings drops.
+  const consistent =
+    effectiveSd === 0
+      ? 1
+      : deviations.filter((d) => Math.abs(d) <= effectiveSd * 2).length / deviations.length;
 
   const se = sd / Math.sqrt(spds.length);
   const rate = w7.length >= 2 ? mean(w7.map((s) => s.spd)) : avg;
@@ -542,7 +549,7 @@ export function computeStats(
     outliers,
     performanceScore: perf,
     stabilityScore: stab,
-    consistencyIndex: Math.round(within1sd * 100),
+    consistencyIndex: Math.round(consistent * 100),
     confidence95: [avg - 1.96 * se, avg + 1.96 * se],
     predicted: {
       d7: off + rate * 7,
@@ -550,7 +557,7 @@ export function computeStats(
       d30: off + rate * 30,
       d90: off + rate * 90,
     },
-    stabilityPct: within1sd * 100,
+    stabilityPct: consistent * 100,
     wearRatio: samples.filter((s) => s.worn).length / samples.length,
     samples,
   };
