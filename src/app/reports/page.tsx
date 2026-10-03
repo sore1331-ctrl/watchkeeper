@@ -183,6 +183,12 @@ export default function ReportsPage() {
         </div>
       </Card>
 
+      {stats.lastMeasuredAt && (
+        <p className="mb-3 text-xs text-muted">
+          Weekly and monthly figures cover the 7 and 30 days up to the last reading,{" "}
+          {fmtDay(stats.lastMeasuredAt)} — not up to today.
+        </p>
+      )}
       <Tabs defaultValue="weekly">
         <TabsList className="print:hidden">
           <TabsTrigger value="weekly">Weekly summary</TabsTrigger>
@@ -191,7 +197,7 @@ export default function ReportsPage() {
 
         <TabsContent value="weekly" className="mt-4">
           {!weekly ? (
-            <p className="text-sm text-muted">Not enough measurements in the last 7 days.</p>
+            <p className="text-sm text-muted">Not enough measurements in the 7 days before the last reading.</p>
           ) : (
             <>
               <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
@@ -232,7 +238,7 @@ export default function ReportsPage() {
 
         <TabsContent value="monthly" className="mt-4">
           {!monthly ? (
-            <p className="text-sm text-muted">Not enough measurements in the last 30 days.</p>
+            <p className="text-sm text-muted">Not enough measurements in the 30 days before the last reading.</p>
           ) : (
             <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
               <StatCard label="Measurements" value={monthly.count} />

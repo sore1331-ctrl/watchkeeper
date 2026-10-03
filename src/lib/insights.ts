@@ -5,6 +5,12 @@ import { analyzeConditions, computeStats, detectAnomaly, mean, stdDev, type Watc
 import { accuracyGrade, batteryRemaining, daysSince, expectedScatter, healthScore, lastRegulationDate, lastServiceDate, MIN_MEASUREMENTS_FOR_GRADE, nextServiceEstimate, rateSpecFor } from "./grades";
 
 const DAY_MS = 86_400_000;
+/**
+ * The analysis windows end at the last reading, not at today. Past this many
+ * days without one, "this month" and "recently" would describe the past as
+ * if it were now, so those claims are not made.
+ */
+const STALE_AFTER_DAYS = 14;
 let seq = 0;
 const nid = () => `ins-${++seq}`;
 
@@ -43,11 +49,12 @@ export function generateInsights(
   // hour, all time corrections) — the comparisons below then simply find nothing.
   const lastSample = stats.samples.at(-1);
   const end = lastSample ? +new Date(lastSample.date) : 0;
+  const fresh = lastSample != null && Date.now() - end <= STALE_AFTER_DAYS * DAY_MS;
   const rec = stats.samples.filter((s) => +new Date(s.date) > end - 30 * DAY_MS);
   const prev = stats.samples.filter(
     (s) => +new Date(s.date) <= end - 30 * DAY_MS && +new Date(s.date) > end - 60 * DAY_MS
   );
-  if (rec.length >= 5 && prev.length >= 5) {
+  if (fresh && rec.length >= 5 && prev.length >= 5) {
     // Compare like-for-like: σ of condition-adjusted residuals, so a month
     // spent resting in a different position isn't reported as instability.
     const cond = analyzeConditions(stats.samples);
@@ -197,7 +204,7 @@ export function generateInsights(
 
   // Anomaly detection — on condition-adjusted residuals where possible
   const anomaly = detectAnomaly(stats.headlineSamples);
-  if (anomaly?.drifting)
+  if (fresh && anomaly?.drifting)
     out.push({
       id: nid(), watchId: watch.id, kind: "trend",
       severity: Math.abs(anomaly.zScore) > 3 ? "warning" : "neutral",
@@ -239,7 +246,9 @@ export function generateNotifications(
 
     // Only warn once there is a real evidence base, and only when the shift
     // survives adjusting for the positions the watch was kept in.
-    const anomaly = stats.count >= MIN_MEASUREMENTS_FOR_GRADE ? detectAnomaly(stats.headlineSamples) : null;
+    const fresh = lastDays != null && lastDays <= STALE_AFTER_DAYS;
+    const anomaly =
+      fresh && stats.count >= MIN_MEASUREMENTS_FOR_GRADE ? detectAnomaly(stats.headlineSamples) : null;
     if (anomaly?.drifting && anomaly.conditionAdjusted)
       push({
         watchId: w.id, kind: "trend-change",
@@ -249,6 +258,7 @@ export function generateNotifications(
       });
 
     if (
+      fresh &&
       stats.count >= MIN_MEASUREMENTS_FOR_GRADE &&
       stats.conditions?.reliable &&
       stats.weeklyVariance != null && stats.monthlyVariance != null &&
