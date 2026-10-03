@@ -4,14 +4,14 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 /*
- * Two palettes. Light is "paper and racing green", dark is "midnight and
- * brass". Every colour used as text is at least 4.5:1 on --surface and on
+ * Two palettes. Light is "paper and ink", dark is "midnight and brass".
+ * Every colour used as text is at least 4.5:1 on --surface and on
  * --surface-2; change one and re-check it.
  *
- * The dark accent (brass) carries no status meaning, so the status scale
- * avoids amber there: warning is orange and the top grade is platinum, not
- * gold. In the light theme the accent and "positive" are both greens — the
- * accent is the darker, bluer one.
+ * The accent carries no status meaning in either theme, so it must not sit
+ * near a status colour. Dark: brass, with warning moved to orange and the top
+ * grade to platinum rather than gold. Light: navy ink — a green accent read
+ * as "good", and a brass one is the same dark amber as "regulation due".
  */
 :root {
   --background: #f5f1ea;
@@ -22,7 +22,7 @@
   --foreground: #1f1b16;
   --muted: #665f55;
   --faint: #6f685e;
-  --accent: #1f6b4a;
+  --accent: #1f3a5f;
   --positive: #177245;
   --warning: #9a5200;
   --critical: #b3261e;
