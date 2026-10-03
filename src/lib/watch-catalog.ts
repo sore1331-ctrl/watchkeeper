@@ -64,7 +64,7 @@ const CALIBER_SPECS: { match: RegExp; brands?: string[]; spec: RateSpec }[] = [
   { match: /^A060\b/i, brands: ["citizen"], spec: { min: -0.014, max: 0.014, source: "The Citizen A060 (±5 s/year)" } },
   { match: /^F9\d\d\b/i, brands: ["citizen"], spec: { min: -0.16, max: 0.16, source: "Citizen Satellite Wave F9xx (±5 s/month)" } },
   // every other Eco-Drive / radio-controlled quartz: a letter and three digits, or the Eco-Drive One
-  { match: /^(eco-?drive\s*)?([A-Z]\d{3}|8826)\b/i, brands: ["citizen"], spec: { min: -0.5, max: 0.5, source: "Citizen Eco-Drive quartz (±15 s/month)" } },
+  { match: /^(eco[\s-]?drive\s*)?([A-Z]\d{3}|8826)\b/i, brands: ["citizen"], spec: { min: -0.5, max: 0.5, source: "Citizen Eco-Drive quartz (±15 s/month)" } },
   // Seiko workhorses, also sold to other brands as the NH series
   { match: /\b4R\d\d/i, spec: { min: -35, max: 45, source: "Seiko 4R3x specification" } },
   { match: /\b6R\d\d/i, spec: { min: -15, max: 25, source: "Seiko 6R3x specification" } },
