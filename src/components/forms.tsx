@@ -11,7 +11,7 @@ import type {
 } from "@/lib/types";
 import { Button, Dialog, DialogContent, DialogTrigger, Empty, Input, Label, Select, Switch, Textarea } from "./ui";
 import {
-  filterSuggestions, modelsForBrand, specForCaliber, suggestModels, WATCH_BRANDS, type CatalogModel,
+  filterSuggestions, findMovement, modelsForBrand, specForCaliber, suggestModels, WATCH_BRANDS, type CatalogModel,
 } from "@/lib/watch-catalog";
 import { CURRENCIES } from "@/lib/utils";
 import { checkClock, describeClockError, type ClockCheck } from "@/lib/clock";
@@ -909,6 +909,22 @@ export function WatchDialog({
     [form.caliber, form.coscCertified, form.brand]
   );
 
+  // The movement the typed caliber refers to, when the catalog knows it.
+  const knownMovement = useMemo(
+    () => (form.caliber.trim() ? findMovement(form.brand, form.caliber) : undefined),
+    [form.brand, form.caliber]
+  );
+  /** Typing a known caliber fills in its figures — only into fields still empty. */
+  const applyMovement = () => {
+    if (!knownMovement) return;
+    setForm((f) => ({
+      ...f,
+      movementType: f.beatRate || f.powerReserveHours ? f.movementType : knownMovement.type,
+      beatRate: f.beatRate || (knownMovement.beatRate?.toString() ?? ""),
+      powerReserveHours: f.powerReserveHours || (knownMovement.powerReserveHours?.toString() ?? ""),
+    }));
+  };
+
   /** Prefill specs from the catalog, only into fields the user hasn't filled. */
   const applyModel = (label: string) => {
     const m: CatalogModel | undefined = brandModels.find((x) => x.model === label);
@@ -921,7 +937,6 @@ export function WatchDialog({
       caliber: f.caliber || (m.caliber ?? ""),
       beatRate: f.beatRate || (m.beatRate?.toString() ?? ""),
       powerReserveHours: f.powerReserveHours || (m.powerReserveHours?.toString() ?? ""),
-      jewels: f.jewels || (m.jewels?.toString() ?? ""),
       coscCertified: f.coscCertified || (m.cosc ?? false),
     }));
   };
@@ -1003,8 +1018,16 @@ export function WatchDialog({
                 <option value="quartz">Quartz</option>
               </Select>
             </div>
-            <div><Label>Caliber</Label><Input value={form.caliber} onChange={(e) => set("caliber", e.target.value)} placeholder="3861" /></div>
+            <div><Label>Caliber</Label><Input value={form.caliber} onChange={(e) => set("caliber", e.target.value)} onBlur={applyMovement} placeholder="3861" /></div>
           </div>
+          {knownMovement && (
+            <p className="-mt-2 text-[11px] text-faint">
+              Recognised as the {knownMovement.maker} {knownMovement.caliber}
+              {knownMovement.checked
+                ? " — its figures are filled in below where the fields were empty."
+                : " — its figures aren't in the catalog yet, so enter them if you know them."}
+            </p>
+          )}
           <div className="grid grid-cols-3 gap-3">
             <div><Label>Beat rate (vph)</Label><Input type="number" value={form.beatRate} onChange={(e) => set("beatRate", e.target.value)} placeholder="28800" /></div>
             <div><Label>Reserve (h)</Label><Input type="number" value={form.powerReserveHours} onChange={(e) => set("powerReserveHours", e.target.value)} placeholder="70" /></div>

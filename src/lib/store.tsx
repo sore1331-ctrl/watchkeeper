@@ -716,7 +716,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           caliber: item.caliber ?? known?.caliber,
           beatRate: known?.beatRate,
           powerReserveHours: known?.powerReserveHours,
-          jewels: known?.jewels,
           coscCertified: known?.cosc ?? false,
           purchaseDate: purchase?.date ?? new Date().toISOString().slice(0, 10),
           purchasePrice: purchase?.price ?? item.targetPrice,

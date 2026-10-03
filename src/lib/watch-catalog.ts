@@ -1,6 +1,7 @@
-// ─── Built-in brand & model catalog for autocomplete ────────────────────────
-// Curated set of common collector watches. Picking a known model prefills its
-// movement specs in the watch form; free-text entry always remains possible.
+// ─── Built-in catalog: movements, and the models that use them ──────────────
+// Picking a known model, or typing a known caliber, prefills the movement's
+// figures in the watch form and tells the analysis what tolerance to judge the
+// watch against. Free-text entry always remains possible.
 
 import type { MovementType } from "./types";
 
@@ -13,8 +14,11 @@ export interface CatalogModel {
   caliber?: string;
   beatRate?: number;
   powerReserveHours?: number;
+  /** not supplied by the catalog (see MOVEMENTS); kept for watches that record it */
   jewels?: number;
   cosc?: boolean;
+  /** the movement's figures were looked up against a published source */
+  checked?: boolean;
 }
 
 // ─── Manufacturer daily-rate specifications ─────────────────────────────────
@@ -65,21 +69,25 @@ const CALIBER_SPECS: { match: RegExp; brands?: string[]; spec: RateSpec }[] = [
   { match: /^F9\d\d\b/i, brands: ["citizen"], spec: { min: -0.16, max: 0.16, source: "Citizen Satellite Wave F9xx (±5 s/month)" } },
   // every other Eco-Drive / radio-controlled quartz: a letter and three digits, or the Eco-Drive One
   { match: /^(eco[\s-]?drive\s*)?([A-Z]\d{3}|8826)\b/i, brands: ["citizen"], spec: { min: -0.5, max: 0.5, source: "Citizen Eco-Drive quartz (±15 s/month)" } },
+  // quartz, stated per month by the maker
+  { match: /^V15[78]\b/i, brands: ["seiko"], spec: { min: -0.5, max: 0.5, source: "Seiko solar V157/V158 (±15 s/month)" } },
+  { match: /\b3229\b/, brands: ["casio", "g-shock"], spec: { min: -0.5, max: 0.5, source: "Casio module 3229 (±15 s/month)" } },
   // Seiko workhorses, also sold to other brands as the NH series
   { match: /\b4R\d\d/i, spec: { min: -35, max: 45, source: "Seiko 4R3x specification" } },
   { match: /\b6R\d\d/i, spec: { min: -15, max: 25, source: "Seiko 6R3x specification" } },
   { match: /\b7S\d\d/i, spec: { min: -20, max: 40, source: "Seiko 7S2x specification" } },
   { match: /\bNH\d\d/i, spec: { min: -20, max: 40, source: "Seiko NH3x specification" } },
   { match: /\b8L\d\d/i, spec: { min: -10, max: 15, source: "Seiko 8L3x specification" } },
+  { match: /\b6L\d\d/i, spec: { min: -10, max: 15, source: "Seiko 6L3x specification" } },
   // Miyota
   { match: /Miyota\s*(90\d\d)/i, spec: { min: -10, max: 30, source: "Miyota 90xx specification" } },
-  { match: /Miyota\s*(8[23]\d\d)/i, spec: { min: -20, max: 40, source: "Miyota 8xxx specification" } },
+  { match: /Miyota\s*(8[23]\d[\dA-Z])/i, spec: { min: -20, max: 40, source: "Miyota 8xxx specification" } },
   // Orient in-house F6
   { match: /\bF6\d{3}\b/i, spec: { min: -15, max: 25, source: "Orient F6 specification" } },
   // Swatch Sistem51
   { match: /sistem\s*51|\bC10111\b/i, spec: { min: -5, max: 15, source: "Swatch Sistem51 specification" } },
   // Powermatic 80 (ETA C07.x11) — Tissot's figure for the standard version
-  { match: /powermatic\s*80|\bC07\.\d{3}/i, spec: { min: -4, max: 10, source: "Powermatic 80, standard (−4/+10 s/d)" } },
+  { match: /powermatic\s*80|\bC07\.(111|611|811)\b/i, spec: { min: -4, max: 10, source: "Powermatic 80, standard (−4/+10 s/d)" } },
   // ETA 2824 / 2892 families and their Sellita equivalents. These are sold in
   // grades and a watch rarely says which it has, so the standard grade — the
   // widest — is assumed. Set the spec on the watch if yours is a better one.
@@ -108,295 +116,552 @@ export function specForCaliber(
 ): RateSpec | null {
   const b = brand?.trim().toLowerCase() ?? "";
   const c = caliber ? cleanCaliber(caliber, b) : "";
-  if (c) {
+  const lookup = (text: string): RateSpec | null => {
     for (const { match, brands, spec } of CALIBER_SPECS) {
       if (brands && !brands.includes(b)) continue;
-      if (match.test(c)) {
+      if (match.test(text)) {
         // A certified chronometer is held to the tighter of the two bands
         if (coscCertified && spec.max - spec.min > COSC_SPEC.max - COSC_SPEC.min) return COSC_SPEC;
         return spec;
       }
     }
+    return null;
+  };
+  if (c) {
+    const direct = lookup(c);
+    if (direct) return direct;
+    // a bare "9015" is the Miyota 9015: try the movement's full name
+    const known = findMovement(b, c);
+    const byName = known ? lookup(`${known.maker} ${known.caliber}`) : null;
+    if (byName) return byName;
   }
   return coscCertified ? COSC_SPEC : null;
 }
 
-export const WATCH_BRANDS: string[] = [
-  "A. Lange & Söhne", "Audemars Piguet", "Baltic", "Blancpain", "Breitling",
-  "Bulova", "Cartier", "Casio", "Certina", "Christopher Ward", "Citizen",
-  "Damasko", "Doxa", "Frederique Constant", "G-Shock", "Girard-Perregaux",
-  "Glashütte Original", "Grand Seiko", "Hamilton", "IWC", "Jaeger-LeCoultre",
-  "Junghans", "Longines", "Mido", "Montblanc", "Nomos", "Omega", "Oris",
-  "Panerai", "Patek Philippe", "Rado", "Rolex", "Seiko", "Sinn", "Squale",
-  "Steinhart", "Swatch", "TAG Heuer", "Tissot", "Tudor", "Ulysse Nardin",
-  "Vacheron Constantin", "Zenith",
+// ─── Movements ──────────────────────────────────────────────────────────────
+// One entry per movement, so its figures are stated — and checked — once, and
+// every model that uses it inherits them. A figure is only given when it was
+// looked up against a published source (`checked`); an unchecked movement is
+// listed by name and type alone rather than with numbers from memory. Jewel
+// counts are deliberately not carried: sources disagree on them too often to
+// state with confidence, and nothing in the analysis uses them.
+
+export interface Movement {
+  maker: string;
+  caliber: string;
+  type: MovementType;
+  /** vibrations per hour */
+  beatRate?: number;
+  powerReserveHours?: number;
+  /** text put in the caliber field, when the bare caliber alone would not be recognisable */
+  label?: string;
+  /** figures looked up against a published source */
+  checked?: boolean;
+}
+
+const A = "automatic" as const;
+const M = "manual" as const;
+const Q = "quartz" as const;
+const mv = (
+  maker: string, caliber: string, type: MovementType,
+  beatRate?: number, powerReserveHours?: number, label?: string
+): Movement => ({
+  maker, caliber, type, beatRate, powerReserveHours, label,
+  checked: beatRate != null || powerReserveHours != null || undefined,
+});
+/** a movement whose only published figure is its accuracy (quartz) — checked, but nothing to prefill */
+const q = (maker: string, caliber: string): Movement => ({ maker, caliber, type: Q, checked: true });
+
+export const MOVEMENTS: Movement[] = [
+  // Rolex
+  mv("Rolex", "3235", A, 28800, 70), mv("Rolex", "3230", A, 28800, 70),
+  mv("Rolex", "3285", A, 28800, 70), mv("Rolex", "3255", A, 28800, 70),
+  mv("Rolex", "4131", A, 28800, 72), mv("Rolex", "4130", A, 28800, 72),
+  mv("Rolex", "9002", A, 28800, 72), mv("Rolex", "3135", A, 28800, 48),
+  mv("Rolex", "3130", A, 28800, 48), mv("Rolex", "3131", A, 28800, 48),
+  // Omega
+  mv("Omega", "3861", M, 21600), mv("Omega", "1861", M, 21600),
+  mv("Omega", "8800", A, 25200, 55), mv("Omega", "8806", A, 25200),
+  mv("Omega", "8900", A, 25200), mv("Omega", "8912", A, 25200),
+  mv("Omega", "8500", A, 25200, 60), mv("Omega", "3330", A, 28800, 52),
+  mv("Omega", "9900", A), mv("Omega", "2500", A), mv("Omega", "3220", A),
+  // Tudor
+  mv("Tudor", "MT5402", A, 28800, 70), mv("Tudor", "MT5400", A, 28800, 70),
+  mv("Tudor", "MT5602", A, 28800, 70), mv("Tudor", "MT5602-U", A, 28800, 70),
+  mv("Tudor", "MT5601", A, 28800, 70), mv("Tudor", "MT5813", A, 28800, 70),
+  mv("Tudor", "MT5612", A), mv("Tudor", "MT5652", A),
+  mv("Tudor", "T601", A, 28800, 38), mv("Tudor", "T603", A, 28800, 38),
+  // Seiko
+  mv("Seiko", "4R35", A, 21600, 41), mv("Seiko", "4R36", A, 21600, 41), mv("Seiko", "4R34", A),
+  mv("Seiko", "6R35", A, 21600, 70), mv("Seiko", "6R15", A, 21600, 50),
+  mv("Seiko", "7S26", A), mv("Seiko", "8L35", A, 28800, 50), mv("Seiko", "6L35", A, 28800, 45),
+  mv("Seiko", "NH35", A, 21600, 41), mv("Seiko", "NH36", A, 21600, 41), mv("Seiko", "NH34", A),
+  q("Seiko", "V157"),
+  // Grand Seiko
+  mv("Grand Seiko", "9S65", A, 28800, 72), mv("Grand Seiko", "9S64", M, 28800, 72),
+  mv("Grand Seiko", "9S66", A, 28800, 72), mv("Grand Seiko", "9S85", A, 36000, 55),
+  mv("Grand Seiko", "9S86", A, 36000, 55), mv("Grand Seiko", "9SA5", A, 36000, 80),
+  // Spring Drive: wound like an automatic, but no escapement and so no beat rate
+  mv("Grand Seiko", "9R65", A, undefined, 72), mv("Grand Seiko", "9R66", A, undefined, 72),
+  q("Grand Seiko", "9F62"), q("Grand Seiko", "9F85"),
+  // ETA and the movements built on it
+  mv("ETA", "2824-2", A, 28800, 38), mv("ETA", "2836-2", A), mv("ETA", "2892-A2", A, 28800, 42),
+  mv("ETA", "7750", A, 28800, 44), mv("ETA", "2801-2", M),
+  mv("ETA", "6497-2", M, 21600, 53), mv("ETA", "6498-2", M, 21600, 53),
+  mv("ETA", "C07.111", A, 21600, 80, "Powermatic 80 (C07.111)"),
+  mv("ETA", "C07.611", A, 21600, 80, "Powermatic 80 (C07.611)"),
+  mv("ETA", "C07.811", A, 21600, 80, "Powermatic 80 (C07.811)"),
+  mv("Mido", "Caliber 80", A, 21600, 80, "Caliber 80 (C07.621)"),
+  mv("Rado", "R763", A, 21600, 80, "R763 (C07 series)"),
+  // Sellita
+  mv("Sellita", "SW200-1", A, 28800, 38), mv("Sellita", "SW220-1", A, 28800, 41),
+  mv("Sellita", "SW300-1", A, 28800, 56), mv("Sellita", "SW500-1", A),
+  // Miyota
+  mv("Miyota", "9015", A, 28800, 42), mv("Miyota", "9039", A, 28800),
+  mv("Miyota", "8215", A, 21600, 42), mv("Miyota", "8315", A, 21600, 60), mv("Miyota", "821D", A),
+  // Hamilton
+  mv("Hamilton", "H-10", A, 21600, 80), mv("Hamilton", "H-30", A, 21600, 80),
+  mv("Hamilton", "H-50", M, 21600, 80), mv("Hamilton", "H-31", A, 28800, 60),
+  // Longines
+  mv("Longines", "L888.4", A, 25200, 72), mv("Longines", "L888.5", A, 25200), mv("Longines", "L844.4", A),
+  // Oris, IWC, Nomos
+  mv("Oris", "400", A, 28800, 120, "Oris 400"),
+  mv("IWC", "32111", A, 28800, 120), mv("IWC", "82100", A, 28800, 60),
+  mv("IWC", "69355", A), mv("IWC", "35111", A),
+  mv("Nomos", "Alpha", M, 21600), mv("Nomos", "DUW 3001", A),
+  // Breitling, TAG Heuer, Zenith
+  mv("Breitling", "B01", A, 28800, 70), mv("Breitling", "B20", A, 28800, 70),
+  mv("TAG Heuer", "TH20-00", A, 28800, 80), mv("TAG Heuer", "Heuer 02", A, 28800, 80),
+  mv("Zenith", "El Primero 3600", A, 36000, 60), mv("Zenith", "El Primero 400", A, 36000, 50),
+  mv("Zenith", "El Primero 3620", A),
+  // Citizen
+  mv("Citizen", "8210", A, 21600, 40), mv("Citizen", "8203", A, 21600), mv("Citizen", "8204", A, 21600, 40),
+  mv("Citizen", "9051", A, 28800, 42), mv("Citizen", "9054", A, 28800, 50),
+  mv("Citizen", "0950", A, 28800), mv("Citizen", "0200", A, 28800, 60),
+  q("Citizen", "F950"), q("Citizen", "H874"), q("Citizen", "H800"), q("Citizen", "E168"),
+  q("Citizen", "B877"), q("Citizen", "8826"), q("Citizen", "A060"), q("Citizen", "0100"),
+  { maker: "Citizen", caliber: "U680", type: Q },
+  // Orient, Vostok, Seagull, Hangzhou, Casio
+  mv("Orient", "F6922", A, 21600, 40), mv("Orient", "F6724", A, 21600, 40),
+  mv("Vostok", "2416B", A, 19800, 31), mv("Seagull", "ST1901", M, 21600, 51),
+  mv("Hangzhou", "5000A", A, 28800, 42), q("Casio", "3229"),
+  // Listed by name only — figures not looked up
+  mv("Swatch", "Sistem51", A, undefined, undefined, "Sistem51 (C10111)"),
+  mv("Jaeger-LeCoultre", "822/2", M), mv("Jaeger-LeCoultre", "899", A), mv("Jaeger-LeCoultre", "898", A),
+  mv("Cartier", "1847 MC", A),
+  mv("Patek Philippe", "26-330 S C", A),
+  mv("Audemars Piguet", "4302", A), mv("Audemars Piguet", "4404", A), mv("Audemars Piguet", "3120", A),
+  mv("A. Lange & Söhne", "L093.1", M), mv("A. Lange & Söhne", "L121.1", M),
+  mv("Panerai", "P.9010", A), mv("Panerai", "P.6000", M),
+  mv("Blancpain", "1315", A), mv("Girard-Perregaux", "GP01800", A),
+  mv("Glashütte Original", "36-01", A), mv("Glashütte Original", "39-11", A), mv("Glashütte Original", "90-02", A),
+  mv("Ulysse Nardin", "UN-118", A), mv("Ulysse Nardin", "UN-816", A),
+  mv("Vacheron Constantin", "5100", A), mv("Vacheron Constantin", "1326", A), mv("Vacheron Constantin", "4400 AS", M),
 ];
 
-export const WATCH_MODELS: Record<string, CatalogModel[]> = {
+const movementKey = (maker: string, caliber: string) => `${maker} ${caliber}`.toLowerCase();
+const MOVEMENT_INDEX = new Map(MOVEMENTS.map((m) => [movementKey(m.maker, m.caliber), m]));
+
+/** What goes in a watch's caliber field for this movement. */
+function caliberText(m: Movement, brand: string): string {
+  if (m.label) return m.label;
+  // an in-house caliber needs no maker in front of it; a bought-in one does
+  return m.maker.toLowerCase() === brand.toLowerCase() ? m.caliber : `${m.maker} ${m.caliber}`;
+}
+
+/**
+ * The movement a typed caliber refers to, if it is one the catalog knows:
+ * the brand's own caliber first, then the widely sold ones by any maker.
+ */
+export function findMovement(brand: string, caliber: string): Movement | undefined {
+  const b = brand.trim().toLowerCase();
+  const c = cleanCaliber(caliber, b).toLowerCase();
+  if (!c) return undefined;
+  const own = MOVEMENTS.find((m) => m.maker.toLowerCase() === b && m.caliber.toLowerCase() === c);
+  if (own) return own;
+  const SHARED = ["eta", "sellita", "miyota", "seiko", "seagull", "hangzhou"];
+  return MOVEMENTS.find((m) => {
+    if (!SHARED.includes(m.maker.toLowerCase())) return false;
+    const name = m.caliber.toLowerCase();
+    // "ETA 2824-2", "2824", "SW200", "Seiko NH35A", "J800.1 (ETA 2824-2)"
+    const stem = name.replace(/-\w+$/, "").replace(/[^a-z0-9]/g, "\\$&");
+    return new RegExp("(^|[^a-z0-9])" + stem, "i").test(c);
+  });
+}
+
+// ─── Models ─────────────────────────────────────────────────────────────────
+// [model, movement ("Maker caliber") or null for a quartz watch with no
+// caliber worth naming, options]. Which movement a model uses is from general
+// knowledge of the current reference; reference numbers are only given where
+// they were looked up (so far: Citizen).
+
+type Row = [
+  model: string,
+  movement: string | null,
+  opts?: { aliases?: string[]; reference?: string; cosc?: boolean; caliber?: string },
+];
+
+const CATALOG: Record<string, Row[]> = {
   Rolex: [
-    { model: "Submariner Date", aliases: ["Sub Date"], reference: "126610LN", movementType: "automatic", caliber: "3235", beatRate: 28800, powerReserveHours: 70, jewels: 31, cosc: true },
-    { model: "Submariner No-Date", aliases: ["Sub No Date", "No Date Sub"], reference: "124060", movementType: "automatic", caliber: "3230", beatRate: 28800, powerReserveHours: 70, jewels: 31, cosc: true },
-    { model: "Datejust 36", aliases: ["DJ36"], reference: "126200", movementType: "automatic", caliber: "3235", beatRate: 28800, powerReserveHours: 70, jewels: 31, cosc: true },
-    { model: "Datejust 41", aliases: ["DJ41"], reference: "126300", movementType: "automatic", caliber: "3235", beatRate: 28800, powerReserveHours: 70, jewels: 31, cosc: true },
-    { model: "GMT-Master II", aliases: ["Batman", "Batgirl", "GMT Master"], reference: "126710BLNR", movementType: "automatic", caliber: "3285", beatRate: 28800, powerReserveHours: 70, jewels: 31, cosc: true },
-    { model: "Explorer 36", reference: "124270", movementType: "automatic", caliber: "3230", beatRate: 28800, powerReserveHours: 70, jewels: 31, cosc: true },
-    { model: "Explorer II", reference: "226570", movementType: "automatic", caliber: "3285", beatRate: 28800, powerReserveHours: 70, jewels: 31, cosc: true },
-    { model: "Daytona", reference: "126500LN", movementType: "automatic", caliber: "4131", beatRate: 28800, powerReserveHours: 72, jewels: 47, cosc: true },
-    { model: "Oyster Perpetual 36", aliases: ["OP36"], reference: "126000", movementType: "automatic", caliber: "3230", beatRate: 28800, powerReserveHours: 70, jewels: 31, cosc: true },
-    { model: "Sea-Dweller", reference: "126600", movementType: "automatic", caliber: "3235", beatRate: 28800, powerReserveHours: 70, jewels: 31, cosc: true },
+    ["Submariner Date", "Rolex 3235", { aliases: ["Sub Date"], cosc: true }],
+    ["Submariner No-Date", "Rolex 3230", { aliases: ["Sub No Date", "No Date Sub"], cosc: true }],
+    ["Submariner Date 116610", "Rolex 3135", { cosc: true }],
+    ["Submariner 114060", "Rolex 3130", { cosc: true }],
+    ["Datejust 36", "Rolex 3235", { aliases: ["DJ36"], cosc: true }],
+    ["Datejust 41", "Rolex 3235", { aliases: ["DJ41"], cosc: true }],
+    ["Day-Date 40", "Rolex 3255", { aliases: ["President"], cosc: true }],
+    ["GMT-Master II", "Rolex 3285", { aliases: ["Batman", "Batgirl", "Pepsi", "GMT Master"], cosc: true }],
+    ["Explorer 36", "Rolex 3230", { cosc: true }],
+    ["Explorer 40", "Rolex 3230", { cosc: true }],
+    ["Explorer II", "Rolex 3285", { cosc: true }],
+    ["Daytona", "Rolex 4131", { cosc: true }],
+    ["Daytona 116500", "Rolex 4130", { cosc: true }],
+    ["Oyster Perpetual 36", "Rolex 3230", { aliases: ["OP36"], cosc: true }],
+    ["Oyster Perpetual 41", "Rolex 3230", { aliases: ["OP41"], cosc: true }],
+    ["Sea-Dweller", "Rolex 3235", { cosc: true }],
+    ["Deepsea", "Rolex 3235", { cosc: true }],
+    ["Yacht-Master 40", "Rolex 3235", { cosc: true }],
+    ["Air-King", "Rolex 3230", { cosc: true }],
+    ["Sky-Dweller", "Rolex 9002", { cosc: true }],
+    ["Milgauss", "Rolex 3131", { cosc: true }],
   ],
   Omega: [
-    { model: "Speedmaster Professional", aliases: ["Speedy", "Moonwatch", "Speedy Pro"], reference: "310.30.42.50.01.001", movementType: "manual", caliber: "3861", beatRate: 21600, powerReserveHours: 50, jewels: 26, cosc: true },
-    { model: "Speedmaster Reduced", reference: "3510.50", movementType: "automatic", caliber: "3220", beatRate: 28800, powerReserveHours: 40, jewels: 45 },
-    { model: "Seamaster Diver 300M", aliases: ["SMP", "SMP300", "Seamaster 300M"], reference: "210.30.42.20.03.001", movementType: "automatic", caliber: "8800", beatRate: 25200, powerReserveHours: 55, jewels: 35, cosc: true },
-    { model: "Seamaster Aqua Terra 150M", aliases: ["Aqua Terra"], reference: "220.10.41.21.03.004", movementType: "automatic", caliber: "8900", beatRate: 25200, powerReserveHours: 60, jewels: 39, cosc: true },
-    { model: "Seamaster Planet Ocean 600M", aliases: ["Planet Ocean"], reference: "215.30.44.21.01.001", movementType: "automatic", caliber: "8900", beatRate: 25200, powerReserveHours: 60, jewels: 39, cosc: true },
-    { model: "Constellation", reference: "131.10.39.20.01.001", movementType: "automatic", caliber: "8800", beatRate: 25200, powerReserveHours: 55, jewels: 35, cosc: true },
-    { model: "De Ville Prestige", reference: "424.10.40.20.02.001", movementType: "automatic", caliber: "2500", beatRate: 25200, powerReserveHours: 48, jewels: 27, cosc: true },
-    { model: "Railmaster", reference: "220.10.40.20.01.001", movementType: "automatic", caliber: "8806", beatRate: 25200, powerReserveHours: 55, jewels: 35, cosc: true },
+    ["Speedmaster Professional", "Omega 3861", { aliases: ["Speedy", "Moonwatch", "Speedy Pro"], cosc: true }],
+    ["Speedmaster Professional (cal. 1861)", "Omega 1861"],
+    ["Speedmaster Racing", "Omega 3330", { cosc: true }],
+    ["Speedmaster Reduced", "Omega 3220"],
+    ["Seamaster Diver 300M", "Omega 8800", { aliases: ["SMP", "SMP300", "Seamaster 300M"], cosc: true }],
+    ["Seamaster Diver 300M Chronograph", "Omega 9900", { cosc: true }],
+    ["Seamaster Aqua Terra 150M", "Omega 8900", { aliases: ["Aqua Terra"], cosc: true }],
+    ["Seamaster Planet Ocean 600M", "Omega 8900", { aliases: ["Planet Ocean"], cosc: true }],
+    ["Seamaster 300", "Omega 8912", { cosc: true }],
+    ["Constellation", "Omega 8800", { cosc: true }],
+    ["De Ville Prestige", "Omega 2500", { cosc: true }],
+    ["Railmaster", "Omega 8806", { cosc: true }],
   ],
   Seiko: [
-    { model: "Prospex SPB143", reference: "SPB143J1", movementType: "automatic", caliber: "6R35", beatRate: 21600, powerReserveHours: 70, jewels: 24 },
-    { model: "Prospex SPB317", reference: "SPB317J1", movementType: "automatic", caliber: "6R35", beatRate: 21600, powerReserveHours: 70, jewels: 24 },
-    { model: "Presage Cocktail Time", reference: "SRPB41J1", movementType: "automatic", caliber: "4R35", beatRate: 21600, powerReserveHours: 41, jewels: 23 },
-    { model: "Presage Sharp Edged", reference: "SPB165J1", movementType: "automatic", caliber: "6R35", beatRate: 21600, powerReserveHours: 70, jewels: 24 },
-    { model: "SKX007", reference: "SKX007K2", movementType: "automatic", caliber: "7S26", beatRate: 21600, powerReserveHours: 41, jewels: 21 },
-    { model: "Seiko 5 Sports SRPD", reference: "SRPD55K1", movementType: "automatic", caliber: "4R36", beatRate: 21600, powerReserveHours: 41, jewels: 24 },
-    { model: "5 Sports GMT SSK001", reference: "SSK001K1", movementType: "automatic", caliber: "4R34", beatRate: 21600, powerReserveHours: 41, jewels: 24 },
-    { model: "5 Sports GMT SSK003", reference: "SSK003K1", movementType: "automatic", caliber: "4R34", beatRate: 21600, powerReserveHours: 41, jewels: 24 },
-    { model: "Turtle", reference: "SRP777K1", movementType: "automatic", caliber: "4R36", beatRate: 21600, powerReserveHours: 41, jewels: 24 },
-    { model: "Samurai", reference: "SRPB51K1", movementType: "automatic", caliber: "4R35", beatRate: 21600, powerReserveHours: 41, jewels: 23 },
-    { model: "Alpinist", reference: "SPB121J1", movementType: "automatic", caliber: "6R35", beatRate: 21600, powerReserveHours: 70, jewels: 24 },
-    { model: "Marinemaster 300", aliases: ["MM300"], reference: "SLA023J1", movementType: "automatic", caliber: "8L35", beatRate: 28800, powerReserveHours: 50, jewels: 26 },
+    ["Prospex SPB143", "Seiko 6R35", { aliases: ["62MAS"] }],
+    ["Prospex SPB317", "Seiko 6R35"],
+    ["Prospex Alpinist SPB121", "Seiko 6R35", { aliases: ["Alpinist"] }],
+    ["Presage Sharp Edged", "Seiko 6R35"],
+    ["Presage Cocktail Time", "Seiko 4R35"],
+    ["Presage Style 60s", "Seiko 4R35"],
+    ["Prospex Samurai", "Seiko 4R35", { aliases: ["Samurai"] }],
+    ["Prospex Turtle", "Seiko 4R36", { aliases: ["Turtle"] }],
+    ["Prospex Monster", "Seiko 4R36", { aliases: ["Monster"] }],
+    ["Seiko 5 Sports SRPD", "Seiko 4R36", { aliases: ["5KX"] }],
+    ["5 Sports GMT SSK001", "Seiko 4R34"],
+    ["5 Sports GMT SSK003", "Seiko 4R34"],
+    ["SKX007", "Seiko 7S26"],
+    ["SKX009", "Seiko 7S26"],
+    ["Seiko 5 SNK809", "Seiko 7S26", { aliases: ["SNK809"] }],
+    ["SARB033", "Seiko 6R15"],
+    ["SARB017 Alpinist", "Seiko 6R15"],
+    ["Marinemaster 300", "Seiko 8L35", { aliases: ["MM300"] }],
+    ["Presage SJE073", "Seiko 6L35"],
+    ["Prospex Solar Diver", "Seiko V157"],
   ],
   "Grand Seiko": [
-    { model: "SBGX261", reference: "SBGX261", movementType: "quartz", caliber: "9F62", jewels: 9 },
-    { model: "SBGA211 \"Snowflake\"", reference: "SBGA211", movementType: "automatic", caliber: "9R65", powerReserveHours: 72, jewels: 30 },
-    { model: "SBGW231", reference: "SBGW231", movementType: "manual", caliber: "9S64", beatRate: 28800, powerReserveHours: 72, jewels: 24 },
-    { model: "SBGH201", reference: "SBGH201", movementType: "automatic", caliber: "9S85", beatRate: 36000, powerReserveHours: 55, jewels: 37 },
-    { model: "SBGM221", reference: "SBGM221", movementType: "automatic", caliber: "9S66", beatRate: 28800, powerReserveHours: 72, jewels: 35 },
-    { model: "White Birch SLGH005", reference: "SLGH005", movementType: "automatic", caliber: "9SA5", beatRate: 36000, powerReserveHours: 80, jewels: 47 },
+    ["SBGX261", "Grand Seiko 9F62"],
+    ["SBGP013", "Grand Seiko 9F85"],
+    ["SBGA211 \"Snowflake\"", "Grand Seiko 9R65", { aliases: ["Snowflake"] }],
+    ["SBGA413 \"Shunbun\"", "Grand Seiko 9R65", { aliases: ["Shunbun"] }],
+    ["SBGE257", "Grand Seiko 9R66"],
+    ["SBGW231", "Grand Seiko 9S64"],
+    ["SBGR251", "Grand Seiko 9S65"],
+    ["SBGM221", "Grand Seiko 9S66"],
+    ["SBGH201", "Grand Seiko 9S85"],
+    ["SBGJ201", "Grand Seiko 9S86"],
+    ["SLGH005 \"White Birch\"", "Grand Seiko 9SA5", { aliases: ["White Birch"] }],
   ],
   Tudor: [
-    { model: "Black Bay 58", aliases: ["BB58"], reference: "M79030N", movementType: "automatic", caliber: "MT5402", beatRate: 28800, powerReserveHours: 70, jewels: 27, cosc: true },
-    { model: "Black Bay 41", aliases: ["BB41"], reference: "M7941A1A0NU", movementType: "automatic", caliber: "MT5602-U", beatRate: 28800, powerReserveHours: 70, jewels: 25, cosc: true },
-    { model: "Pelagos 39", reference: "M25407N", movementType: "automatic", caliber: "MT5400", beatRate: 28800, powerReserveHours: 70, jewels: 27, cosc: true },
-    { model: "Pelagos FXD", reference: "M25707B", movementType: "automatic", caliber: "MT5602", beatRate: 28800, powerReserveHours: 70, jewels: 25, cosc: true },
-    { model: "Ranger", reference: "M79950", movementType: "automatic", caliber: "MT5402", beatRate: 28800, powerReserveHours: 70, jewels: 27, cosc: true },
-    { model: "Royal 41", reference: "M28600", movementType: "automatic", caliber: "T603", beatRate: 28800, powerReserveHours: 38, jewels: 25 },
+    ["Black Bay 58", "Tudor MT5402", { aliases: ["BB58"], cosc: true }],
+    ["Black Bay 54", "Tudor MT5400", { aliases: ["BB54"], cosc: true }],
+    ["Black Bay 41", "Tudor MT5602-U", { aliases: ["BB41"], cosc: true }],
+    ["Black Bay GMT", "Tudor MT5652", { aliases: ["BB GMT"], cosc: true }],
+    ["Black Bay Pro", "Tudor MT5652", { aliases: ["BB Pro"], cosc: true }],
+    ["Black Bay Chrono", "Tudor MT5813", { cosc: true }],
+    ["Black Bay Bronze", "Tudor MT5601", { cosc: true }],
+    ["Pelagos", "Tudor MT5612", { cosc: true }],
+    ["Pelagos 39", "Tudor MT5400", { cosc: true }],
+    ["Pelagos FXD", "Tudor MT5602", { cosc: true }],
+    ["Ranger", "Tudor MT5402", { cosc: true }],
+    ["Royal", "Tudor T601"],
+    ["Royal 41 Day-Date", "Tudor T603"],
+    ["1926", "Tudor T601"],
   ],
   Nomos: [
-    { model: "Tangente 38", reference: "164", movementType: "manual", caliber: "Alpha", beatRate: 21600, powerReserveHours: 43, jewels: 17 },
-    { model: "Tangente Neomatik 39", reference: "140", movementType: "automatic", caliber: "DUW 3001", beatRate: 21600, powerReserveHours: 43, jewels: 27 },
-    { model: "Club Campus 38", reference: "735", movementType: "manual", caliber: "Alpha", beatRate: 21600, powerReserveHours: 43, jewels: 17 },
-    { model: "Orion 38", reference: "384", movementType: "manual", caliber: "Alpha", beatRate: 21600, powerReserveHours: 43, jewels: 17 },
-    { model: "Metro Neomatik", reference: "1114", movementType: "automatic", caliber: "DUW 3001", beatRate: 21600, powerReserveHours: 43, jewels: 27 },
-    { model: "Ludwig 38", reference: "234", movementType: "manual", caliber: "Alpha", beatRate: 21600, powerReserveHours: 43, jewels: 17 },
+    ["Tangente 38", "Nomos Alpha"],
+    ["Club Campus 38", "Nomos Alpha"],
+    ["Orion 38", "Nomos Alpha"],
+    ["Ludwig 38", "Nomos Alpha"],
+    ["Tangente Neomatik 39", "Nomos DUW 3001"],
+    ["Metro Neomatik", "Nomos DUW 3001"],
   ],
   Longines: [
-    { model: "Spirit Zulu Time", reference: "L3.812.4.53.6", movementType: "automatic", caliber: "L844.4", beatRate: 25200, powerReserveHours: 72, cosc: true },
-    { model: "Spirit 40", reference: "L3.810.4.53.6", movementType: "automatic", caliber: "L888.4", beatRate: 25200, powerReserveHours: 72, cosc: true },
-    { model: "HydroConquest 41", reference: "L3.781.4.56.6", movementType: "automatic", caliber: "L888", beatRate: 25200, powerReserveHours: 72 },
-    { model: "Legend Diver", reference: "L3.774.4.50.0", movementType: "automatic", caliber: "L888.5", beatRate: 25200, powerReserveHours: 72 },
-    { model: "Master Collection 40", reference: "L2.909.4.78.3", movementType: "automatic", caliber: "L888", beatRate: 25200, powerReserveHours: 72 },
+    ["Spirit Zulu Time", "Longines L844.4", { cosc: true }],
+    ["Spirit 40", "Longines L888.4", { cosc: true }],
+    ["HydroConquest 41", "Longines L888.5"],
+    ["Legend Diver", "Longines L888.5"],
+    ["Master Collection 40", "Longines L888.5"],
+    ["Conquest 41", "Longines L888.5"],
   ],
   Tissot: [
-    { model: "PRX Powermatic 80", reference: "T137.407.11.041.00", movementType: "automatic", caliber: "Powermatic 80.111", beatRate: 21600, powerReserveHours: 80, jewels: 23 },
-    { model: "PRX 40 Quartz", reference: "T137.410.11.041.00", movementType: "quartz", caliber: "F06.115" },
-    { model: "Seastar 1000 Powermatic 80", reference: "T120.407.11.041.03", movementType: "automatic", caliber: "Powermatic 80.111", beatRate: 21600, powerReserveHours: 80, jewels: 23 },
-    { model: "Gentleman Powermatic 80 Silicium", reference: "T127.407.11.041.00", movementType: "automatic", caliber: "Powermatic 80.811", beatRate: 21600, powerReserveHours: 80, jewels: 23 },
-    { model: "Le Locle Powermatic 80", reference: "T006.407.11.033.00", movementType: "automatic", caliber: "Powermatic 80.111", beatRate: 21600, powerReserveHours: 80, jewels: 23 },
+    ["PRX Powermatic 80", "ETA C07.111"],
+    ["Seastar 1000 Powermatic 80", "ETA C07.111"],
+    ["Le Locle Powermatic 80", "ETA C07.111"],
+    ["Gentleman Powermatic 80 Silicium", "ETA C07.811"],
+    ["PRX 40 Quartz", null],
+    ["Everytime", null],
   ],
   Hamilton: [
-    { model: "Khaki Field Mechanical 38", reference: "H69439931", movementType: "manual", caliber: "H-50", beatRate: 21600, powerReserveHours: 80, jewels: 17 },
-    { model: "Khaki Field Auto 42", reference: "H70595593", movementType: "automatic", caliber: "H-10", beatRate: 21600, powerReserveHours: 80, jewels: 25 },
-    { model: "Khaki Aviation Pilot Pioneer", reference: "H76419931", movementType: "automatic", caliber: "H-10", beatRate: 21600, powerReserveHours: 80, jewels: 25 },
-    { model: "Jazzmaster Open Heart 40", reference: "H32675540", movementType: "automatic", caliber: "H-10", beatRate: 21600, powerReserveHours: 80, jewels: 25 },
-    { model: "Intra-Matic 38", reference: "H38455151", movementType: "automatic", caliber: "H-10", beatRate: 21600, powerReserveHours: 80, jewels: 25 },
+    ["Khaki Field Mechanical 38", "Hamilton H-50"],
+    ["Khaki Field Auto 38", "Hamilton H-10"],
+    ["Khaki Field Auto 42", "Hamilton H-10"],
+    ["Khaki Field Murph", "Hamilton H-10", { aliases: ["Murph"] }],
+    ["Khaki Aviation Pilot Pioneer", "Hamilton H-10"],
+    ["Jazzmaster Open Heart 40", "Hamilton H-10"],
+    ["Khaki Field Day Date", "Hamilton H-30"],
+    ["Intra-Matic Auto Chrono", "Hamilton H-31"],
+    ["Ventura", null],
   ],
   Oris: [
-    { model: "Aquis Date 41.5", reference: "01 733 7766 4135", movementType: "automatic", caliber: "Oris 733 (SW200-1)", beatRate: 28800, powerReserveHours: 38, jewels: 26 },
-    { model: "Divers Sixty-Five 40", reference: "01 733 7707 4064", movementType: "automatic", caliber: "Oris 733 (SW200-1)", beatRate: 28800, powerReserveHours: 38, jewels: 26 },
-    { model: "Big Crown ProPilot", reference: "01 751 7761 4164", movementType: "automatic", caliber: "Oris 751 (SW220-1)", beatRate: 28800, powerReserveHours: 38, jewels: 26 },
-    { model: "ProPilot X Calibre 400", reference: "01 400 7778 7153", movementType: "automatic", caliber: "Oris 400", beatRate: 28800, powerReserveHours: 120, jewels: 21 },
-    { model: "Aquis Calibre 400", reference: "01 400 7769 4135", movementType: "automatic", caliber: "Oris 400", beatRate: 28800, powerReserveHours: 120, jewels: 21 },
+    ["Aquis Date 41.5", "Sellita SW200-1", { caliber: "Oris 733 (Sellita SW200-1)" }],
+    ["Divers Sixty-Five 40", "Sellita SW200-1", { caliber: "Oris 733 (Sellita SW200-1)" }],
+    ["Big Crown Pointer Date", "Sellita SW200-1", { caliber: "Oris 754 (Sellita SW200-1)" }],
+    ["Big Crown ProPilot", "Sellita SW220-1", { caliber: "Oris 751 (Sellita SW220-1)" }],
+    ["ProPilot X Calibre 400", "Oris 400"],
+    ["Aquis Date Calibre 400", "Oris 400"],
   ],
   IWC: [
-    { model: "Pilot's Watch Mark XX", reference: "IW328201", movementType: "automatic", caliber: "32111", beatRate: 28800, powerReserveHours: 120, jewels: 21 },
-    { model: "Big Pilot 43", reference: "IW329301", movementType: "automatic", caliber: "82100", beatRate: 28800, powerReserveHours: 60, jewels: 22 },
-    { model: "Portugieser Chronograph", reference: "IW371604", movementType: "automatic", caliber: "69355", beatRate: 28800, powerReserveHours: 46, jewels: 27 },
-    { model: "Portofino Automatic", reference: "IW356501", movementType: "automatic", caliber: "35111", beatRate: 28800, powerReserveHours: 42, jewels: 25 },
-    { model: "Aquatimer Automatic", reference: "IW328801", movementType: "automatic", caliber: "32111", beatRate: 28800, powerReserveHours: 120, jewels: 21 },
+    ["Pilot's Watch Mark XX", "IWC 32111"],
+    ["Ingenieur Automatic 40", "IWC 32111"],
+    ["Aquatimer Automatic", "IWC 32111"],
+    ["Big Pilot 43", "IWC 82100"],
+    ["Portugieser Chronograph", "IWC 69355"],
+    ["Portofino Automatic", "IWC 35111"],
   ],
   Breitling: [
-    { model: "Navitimer B01 43", reference: "AB0138211B1P1", movementType: "automatic", caliber: "B01", beatRate: 28800, powerReserveHours: 70, jewels: 47, cosc: true },
-    { model: "Superocean Heritage 42", reference: "AB2010121B1A1", movementType: "automatic", caliber: "B20", beatRate: 28800, powerReserveHours: 70, cosc: true },
-    { model: "Chronomat B01 42", reference: "AB0134101B1A1", movementType: "automatic", caliber: "B01", beatRate: 28800, powerReserveHours: 70, jewels: 47, cosc: true },
-    { model: "Avenger Automatic GMT 44", reference: "A32320101B1X1", movementType: "automatic", caliber: "B32 (SW330)", beatRate: 28800, powerReserveHours: 42, cosc: true },
+    ["Navitimer B01 43", "Breitling B01", { cosc: true }],
+    ["Chronomat B01 42", "Breitling B01", { cosc: true }],
+    ["Superocean Heritage 42", "Breitling B20", { cosc: true }],
+    ["Superocean Automatic 42", "ETA 2824-2", { caliber: "Breitling 17 (ETA 2824-2)", cosc: true }],
   ],
   "TAG Heuer": [
-    { model: "Carrera Chronograph 42", reference: "CBN2010.BA0642", movementType: "automatic", caliber: "Heuer 02", beatRate: 28800, powerReserveHours: 80, jewels: 33 },
-    { model: "Aquaracer Professional 300", reference: "WBP2110.BA0627", movementType: "automatic", caliber: "5 (SW200-1)", beatRate: 28800, powerReserveHours: 38, jewels: 26 },
-    { model: "Monaco", reference: "CBL2111.FC6453", movementType: "automatic", caliber: "Heuer 02", beatRate: 28800, powerReserveHours: 80, jewels: 33 },
-    { model: "Formula 1 Quartz", reference: "WAZ1110.BA0875", movementType: "quartz" },
+    ["Carrera Chronograph 42", "TAG Heuer TH20-00"],
+    ["Monaco", "TAG Heuer Heuer 02"],
+    ["Carrera Calibre 5", "Sellita SW200-1", { caliber: "Calibre 5 (Sellita SW200-1)" }],
+    ["Aquaracer Professional 300", "Sellita SW200-1", { caliber: "Calibre 5 (Sellita SW200-1)" }],
+    ["Formula 1 Quartz", null],
   ],
   Sinn: [
-    { model: "556 I", reference: "556.010", movementType: "automatic", caliber: "SW200-1", beatRate: 28800, powerReserveHours: 38, jewels: 26 },
-    { model: "104 St Sa", reference: "104.010", movementType: "automatic", caliber: "SW220-1", beatRate: 28800, powerReserveHours: 38, jewels: 26 },
-    { model: "U50", reference: "1050.010", movementType: "automatic", caliber: "SW300-1", beatRate: 28800, powerReserveHours: 42, jewels: 25 },
-    { model: "356 Flieger", reference: "356.020", movementType: "automatic", caliber: "SW500", beatRate: 28800, powerReserveHours: 48, jewels: 25 },
+    ["556 I", "Sellita SW200-1"],
+    ["104 St Sa", "Sellita SW220-1"],
+    ["U50", "Sellita SW300-1"],
+    ["356 Flieger", "Sellita SW500-1"],
   ],
   "Jaeger-LeCoultre": [
-    { model: "Reverso Classic Medium", reference: "Q2548520", movementType: "manual", caliber: "822/2", beatRate: 21600, powerReserveHours: 42, jewels: 19 },
-    { model: "Master Ultra Thin Date", reference: "Q1238420", movementType: "automatic", caliber: "899", beatRate: 28800, powerReserveHours: 70, jewels: 30 },
-    { model: "Polaris Automatic", reference: "Q9008170", movementType: "automatic", caliber: "898", beatRate: 28800, powerReserveHours: 70, jewels: 30 },
+    ["Reverso Classic Medium", "Jaeger-LeCoultre 822/2"],
+    ["Master Ultra Thin Date", "Jaeger-LeCoultre 899"],
+    ["Polaris Automatic", "Jaeger-LeCoultre 898"],
   ],
   Cartier: [
-    { model: "Tank Must Large", reference: "WSTA0041", movementType: "quartz" },
-    { model: "Tank Must Extra-Large Auto", reference: "WSTA0040", movementType: "automatic", caliber: "1847 MC", beatRate: 28800, powerReserveHours: 40 },
-    { model: "Santos Medium", reference: "WSSA0029", movementType: "automatic", caliber: "1847 MC", beatRate: 28800, powerReserveHours: 40 },
-    { model: "Ballon Bleu 40", reference: "WSBB0040", movementType: "automatic", caliber: "1847 MC", beatRate: 28800, powerReserveHours: 40 },
+    ["Tank Must", null],
+    ["Tank Must Extra-Large Auto", "Cartier 1847 MC"],
+    ["Santos Medium", "Cartier 1847 MC"],
+    ["Santos Large", "Cartier 1847 MC"],
+    ["Ballon Bleu 40", "Cartier 1847 MC"],
   ],
   Zenith: [
-    { model: "Chronomaster Sport", reference: "03.3100.3600/69.M3100", movementType: "automatic", caliber: "El Primero 3600", beatRate: 36000, powerReserveHours: 60, jewels: 35 },
-    { model: "Chronomaster Original", reference: "03.3200.3600/69.C902", movementType: "automatic", caliber: "El Primero 3600", beatRate: 36000, powerReserveHours: 60, jewels: 35 },
-    { model: "Defy Skyline", reference: "03.9300.3620/01.I001", movementType: "automatic", caliber: "El Primero 3620", beatRate: 36000, powerReserveHours: 60 },
+    ["Chronomaster Sport", "Zenith El Primero 3600"],
+    ["Chronomaster Original", "Zenith El Primero 3600"],
+    ["Chronomaster El Primero", "Zenith El Primero 400"],
+    ["Defy Skyline", "Zenith El Primero 3620"],
   ],
   Casio: [
-    { model: "G-Shock DW-5600", reference: "DW-5600E-1V", movementType: "quartz" },
-    { model: "G-Shock GA-2100", reference: "GA-2100-1A1", movementType: "quartz" },
-    { model: "Casioak GM-2100", reference: "GM-2100-1A", movementType: "quartz" },
-    { model: "A168", reference: "A168WA-1", movementType: "quartz" },
-    { model: "Oceanus S100", reference: "OCW-S100-1AJF", movementType: "quartz" },
+    ["F-91W", null],
+    ["A168", null],
+    ["AE-1200", null, { aliases: ["Casio Royale", "Royale"] }],
+    ["MDV-106", null, { aliases: ["Duro", "Marlin"] }],
+    ["Oceanus S100", null],
+    ["Edifice", null],
+  ],
+  "G-Shock": [
+    ["DW-5600", "Casio 3229", { aliases: ["Square"], caliber: "Module 3229" }],
+    ["GW-M5610", null],
+    ["GW-5000", null],
+    ["DW-6900", null],
+    ["GA-2100", null, { aliases: ["CasiOak"] }],
+    ["GA-B2100", null],
+    ["Mudmaster", null],
   ],
   // Citizen: lines, references, calibers and tolerances looked up 2026-10.
   // Radio-controlled and GPS models keep their stated accuracy only between
   // signals; with reception they are corrected daily.
   Citizen: [
-    { model: "Attesa ACT Line Satellite Wave GPS", aliases: ["Attesa GPS", "Attesa F950"], reference: "CC4055-65E", movementType: "quartz", caliber: "F950" },
-    { model: "Attesa Satellite Wave GPS", reference: "CC4105-69E", movementType: "quartz", caliber: "F950" },
-    { model: "Attesa Radio-Controlled", aliases: ["Attesa H874"], reference: "BY1001-66E", movementType: "quartz", caliber: "H874" },
-    { model: "Attesa Radio-Controlled Chronograph", aliases: ["Attesa H800"], movementType: "quartz", caliber: "H800" },
-    { model: "Promaster Dive Eco-Drive", reference: "BN0150-28E", movementType: "quartz", caliber: "E168" },
-    { model: "Promaster Mechanical Diver 200m", aliases: ["Fujitsubo"], reference: "NB6021-68L", movementType: "automatic", caliber: "9051", beatRate: 28800, powerReserveHours: 42, jewels: 24 },
-    { model: "Promaster Diver Automatic", aliases: ["NY0040"], reference: "NY0040-17L", movementType: "automatic", caliber: "8203", beatRate: 21600, jewels: 21 },
-    { model: "Promaster Fugu", aliases: ["Fugu"], reference: "NY0155-58X", movementType: "automatic", caliber: "8204", beatRate: 21600, powerReserveHours: 40 },
-    { model: "Promaster Nighthawk", aliases: ["Nighthawk"], reference: "BJ7000-52E", movementType: "quartz", caliber: "B877" },
-    { model: "Promaster Navihawk A-T", aliases: ["Navihawk"], reference: "JY8033-51E", movementType: "quartz", caliber: "U680" },
-    { model: "Series 8 870", reference: "NA1004-87E", movementType: "automatic", caliber: "0950", beatRate: 28800, jewels: 24 },
-    { model: "Series 8 831", reference: "NB6050-51W", movementType: "automatic", caliber: "9051", beatRate: 28800, powerReserveHours: 42, jewels: 24 },
-    { model: "Series 8 880 GMT", reference: "NB6031-56E", movementType: "automatic", caliber: "9054", beatRate: 28800, powerReserveHours: 50 },
-    { model: "Tsuyosa", reference: "NJ0150-81E", movementType: "automatic", caliber: "8210", beatRate: 21600, powerReserveHours: 40, jewels: 21 },
-    { model: "Eco-Drive One", movementType: "quartz", caliber: "8826" },
-    { model: "The Citizen Chronomaster", reference: "AQ4100-57C", movementType: "quartz", caliber: "A060" },
-    { model: "The Citizen Caliber 0100", reference: "AQ6021-51E", movementType: "quartz", caliber: "0100" },
-    { model: "The Citizen Mechanical Caliber 0200", reference: "NC0210-11A", movementType: "automatic", caliber: "0200", beatRate: 28800, powerReserveHours: 60, jewels: 26 },
+    ["Attesa ACT Line Satellite Wave GPS", "Citizen F950", { aliases: ["Attesa GPS", "Attesa F950"], reference: "CC4055-65E" }],
+    ["Attesa Satellite Wave GPS", "Citizen F950", { reference: "CC4105-69E" }],
+    ["Attesa Radio-Controlled", "Citizen H874", { aliases: ["Attesa H874"], reference: "BY1001-66E" }],
+    ["Attesa Radio-Controlled Chronograph", "Citizen H800", { aliases: ["Attesa H800"] }],
+    ["Promaster Dive Eco-Drive", "Citizen E168", { reference: "BN0150-28E" }],
+    ["Promaster Mechanical Diver 200m", "Citizen 9051", { aliases: ["Fujitsubo"], reference: "NB6021-68L" }],
+    ["Promaster Diver Automatic", "Citizen 8203", { aliases: ["NY0040"], reference: "NY0040-17L" }],
+    ["Promaster Fugu", "Citizen 8204", { aliases: ["Fugu"], reference: "NY0155-58X" }],
+    ["Promaster Nighthawk", "Citizen B877", { aliases: ["Nighthawk"], reference: "BJ7000-52E" }],
+    ["Promaster Navihawk A-T", "Citizen U680", { aliases: ["Navihawk"], reference: "JY8033-51E" }],
+    ["Series 8 870", "Citizen 0950", { reference: "NA1004-87E" }],
+    ["Series 8 831", "Citizen 9051", { reference: "NB6050-51W" }],
+    ["Series 8 880 GMT", "Citizen 9054", { reference: "NB6031-56E" }],
+    ["Tsuyosa", "Citizen 8210", { reference: "NJ0150-81E" }],
+    ["Eco-Drive One", "Citizen 8826"],
+    ["The Citizen Chronomaster", "Citizen A060", { reference: "AQ4100-57C" }],
+    ["The Citizen Caliber 0100", "Citizen 0100", { reference: "AQ6021-51E" }],
+    ["The Citizen Mechanical Caliber 0200", "Citizen 0200", { reference: "NC0210-11A" }],
+  ],
+  Orient: [
+    ["Bambino", "Orient F6724"],
+    ["Kamasu", "Orient F6922"],
+    ["Mako II", "Orient F6922", { aliases: ["Mako"] }],
+    ["Ray II", "Orient F6922", { aliases: ["Ray"] }],
   ],
   "Christopher Ward": [
-    { model: "C60 Trident Pro 300", reference: "C60-40ADA3-S00K0-B0", movementType: "automatic", caliber: "SW200-1", beatRate: 28800, powerReserveHours: 38, jewels: 26 },
-    { model: "C65 Dune", reference: "C65-38ADA1-S00W0-B0", movementType: "automatic", caliber: "SW200-1", beatRate: 28800, powerReserveHours: 38, jewels: 26 },
-    { model: "The Twelve", reference: "C12-40ADA2-S00B0-B0", movementType: "automatic", caliber: "SW200-1", beatRate: 28800, powerReserveHours: 38, jewels: 26 },
+    ["C60 Trident Pro 300", "Sellita SW200-1"],
+    ["C65 Dune", "Sellita SW200-1"],
+    ["C63 Sealander", "Sellita SW200-1"],
+    ["The Twelve", "Sellita SW200-1"],
   ],
   "Patek Philippe": [
-    { model: "Calatrava 5227", reference: "5227G-001", movementType: "automatic", caliber: "26-330 S C", beatRate: 28800, powerReserveHours: 45, jewels: 30 },
-    { model: "Aquanaut 5167", reference: "5167A-001", movementType: "automatic", caliber: "26-330 S C", beatRate: 28800, powerReserveHours: 45, jewels: 30 },
-    { model: "Nautilus 5811", reference: "5811/1G-001", movementType: "automatic", caliber: "26-330 S C", beatRate: 28800, powerReserveHours: 45, jewels: 30 },
+    ["Aquanaut 5167", "Patek Philippe 26-330 S C"],
+    ["Nautilus 5811", "Patek Philippe 26-330 S C"],
   ],
   "Audemars Piguet": [
-    { model: "Royal Oak 41 Selfwinding", reference: "15510ST.OO.1320ST.06", movementType: "automatic", caliber: "4302", beatRate: 28800, powerReserveHours: 70, jewels: 32 },
-    { model: "Royal Oak Offshore 42", reference: "26420SO.OO.A002CA.01", movementType: "automatic", caliber: "4404", beatRate: 28800, powerReserveHours: 70, jewels: 40 },
+    ["Royal Oak 41 Selfwinding", "Audemars Piguet 4302"],
+    ["Royal Oak 15400", "Audemars Piguet 3120"],
+    ["Royal Oak Offshore Chronograph", "Audemars Piguet 4404"],
   ],
   "A. Lange & Söhne": [
-    { model: "Saxonia Thin", reference: "211.026", movementType: "manual", caliber: "L093.1", beatRate: 21600, powerReserveHours: 72, jewels: 21 },
-    { model: "Lange 1", reference: "191.039", movementType: "manual", caliber: "L121.1", beatRate: 21600, powerReserveHours: 72, jewels: 43 },
+    ["Saxonia Thin", "A. Lange & Söhne L093.1"],
+    ["Lange 1", "A. Lange & Söhne L121.1"],
   ],
   Panerai: [
-    { model: "Luminor Marina 44", reference: "PAM01312", movementType: "automatic", caliber: "P.9010", beatRate: 28800, powerReserveHours: 72, jewels: 31 },
-    { model: "Luminor Base Logo", reference: "PAM01084", movementType: "manual", caliber: "P.6000", beatRate: 21600, powerReserveHours: 72, jewels: 19 },
+    ["Luminor Marina 44", "Panerai P.9010"],
+    ["Luminor Base Logo", "Panerai P.6000"],
   ],
   Mido: [
-    { model: "Ocean Star 200", reference: "M026.430.11.041.00", movementType: "automatic", caliber: "Caliber 80 (C07.621)", beatRate: 21600, powerReserveHours: 80, jewels: 25 },
-    { model: "Baroncelli Heritage", reference: "M027.407.16.010.00", movementType: "automatic", caliber: "Caliber 80", beatRate: 21600, powerReserveHours: 80, jewels: 25 },
-    { model: "Multifort M", reference: "M038.430.11.041.00", movementType: "automatic", caliber: "Caliber 80", beatRate: 21600, powerReserveHours: 80, jewels: 25 },
+    ["Ocean Star 200", "Mido Caliber 80"],
+    ["Baroncelli Heritage", "Mido Caliber 80"],
+    ["Multifort M", "Mido Caliber 80"],
   ],
   Junghans: [
-    { model: "Max Bill Automatic", reference: "027/3500.02", movementType: "automatic", caliber: "J800.1 (ETA 2824-2)", beatRate: 28800, powerReserveHours: 38, jewels: 25 },
-    { model: "Max Bill Hand-Wound", reference: "027/3702.02", movementType: "manual", caliber: "J805.1 (ETA 2801-2)", beatRate: 28800, powerReserveHours: 42, jewels: 17 },
-    { model: "Meister Classic", reference: "027/4310.00", movementType: "automatic", caliber: "J800.1", beatRate: 28800, powerReserveHours: 38, jewels: 25 },
+    ["Max Bill Automatic", "ETA 2824-2", { caliber: "J800.1 (ETA 2824-2)" }],
+    ["Meister Classic", "ETA 2824-2", { caliber: "J800.1 (ETA 2824-2)" }],
+    ["Max Bill Hand-Wound", "ETA 2801-2", { caliber: "J805.1 (ETA 2801-2)" }],
   ],
   Baltic: [
-    { model: "Aquascaphe Classic", movementType: "automatic", caliber: "Miyota 9039", beatRate: 28800, powerReserveHours: 42, jewels: 24 },
-    { model: "HMS 003", movementType: "automatic", caliber: "Miyota 8315", beatRate: 21600, powerReserveHours: 60, jewels: 21 },
-    { model: "MR01", movementType: "automatic", caliber: "Hangzhou 5000A", beatRate: 28800, powerReserveHours: 42, jewels: 21 },
+    ["Aquascaphe Classic", "Miyota 9039"],
+    ["Hermétique", "Miyota 9039"],
+    ["HMS 003", "Miyota 8315"],
+    ["MR01", "Hangzhou 5000A"],
   ],
   Squale: [
-    { model: "1521 Classic", reference: "1521CL", movementType: "automatic", caliber: "SW200-1", beatRate: 28800, powerReserveHours: 38, jewels: 26 },
-    { model: "Sub-39", reference: "SUB39GG", movementType: "automatic", caliber: "SW200-1", beatRate: 28800, powerReserveHours: 38, jewels: 26 },
+    ["1521 Classic", "Sellita SW200-1"],
+    ["Sub-39", "Sellita SW200-1"],
   ],
   Steinhart: [
-    { model: "Ocean One 39", movementType: "automatic", caliber: "SW200-1", beatRate: 28800, powerReserveHours: 38, jewels: 26 },
-    { model: "Nav B-Uhr 44", movementType: "automatic", caliber: "SW200-1", beatRate: 28800, powerReserveHours: 38, jewels: 26 },
+    ["Ocean One 39", "Sellita SW200-1"],
+    ["Nav B-Uhr 44", "Sellita SW200-1"],
   ],
   Certina: [
-    { model: "DS Action Diver 38", reference: "C032.807.11.041.00", movementType: "automatic", caliber: "Powermatic 80.111", beatRate: 21600, powerReserveHours: 80, jewels: 23 },
-    { model: "DS PH200M", reference: "C036.407.16.050.00", movementType: "automatic", caliber: "Powermatic 80.611", beatRate: 21600, powerReserveHours: 80, jewels: 23 },
-  ],
-  Blancpain: [
-    { model: "Fifty Fathoms Automatique", reference: "5015-1130-52A", movementType: "automatic", caliber: "1315", beatRate: 28800, powerReserveHours: 120, jewels: 35 },
-    { model: "Fifty Fathoms Bathyscaphe", reference: "5000-1110-B52A", movementType: "automatic", caliber: "1315", beatRate: 28800, powerReserveHours: 120, jewels: 35 },
-  ],
-  Bulova: [
-    { model: "Lunar Pilot", reference: "96B258", movementType: "quartz", caliber: "NP20" },
-    { model: "Oceanographer", aliases: ["Devil Diver"], reference: "96B321", movementType: "automatic", caliber: "Miyota 821D", beatRate: 21600, powerReserveHours: 42 },
-  ],
-  Damasko: [
-    { model: "DA36", movementType: "automatic", caliber: "ETA 2836-2", beatRate: 28800, powerReserveHours: 38, jewels: 25 },
-    { model: "DS30", movementType: "automatic", caliber: "SW200-1", beatRate: 28800, powerReserveHours: 38, jewels: 26 },
-  ],
-  Doxa: [
-    { model: "Sub 300", movementType: "automatic", caliber: "ETA 2824-2", beatRate: 28800, powerReserveHours: 38, jewels: 25, cosc: true },
-    { model: "Sub 300T", movementType: "automatic", caliber: "ETA 2824-2", beatRate: 28800, powerReserveHours: 38, jewels: 25 },
-    { model: "Sub 200", movementType: "automatic", caliber: "ETA 2824-2", beatRate: 28800, powerReserveHours: 38, jewels: 25 },
-  ],
-  "G-Shock": [
-    { model: "DW-5600", reference: "DW-5600E-1V", movementType: "quartz" },
-    { model: "GA-2100", aliases: ["CasiOak"], reference: "GA-2100-1A1", movementType: "quartz" },
-    { model: "GW-M5610", reference: "GW-M5610U-1", movementType: "quartz" },
-  ],
-  "Girard-Perregaux": [
-    { model: "Laureato 42", reference: "81010-11-431-11A", movementType: "automatic", caliber: "GP01800", beatRate: 28800, powerReserveHours: 54 },
-  ],
-  "Glashütte Original": [
-    { model: "Senator Excellence", movementType: "automatic", caliber: "36-01", beatRate: 28800, powerReserveHours: 100 },
-    { model: "SeaQ", movementType: "automatic", caliber: "39-11", beatRate: 28800, powerReserveHours: 40 },
-    { model: "PanoMaticLunar", movementType: "automatic", caliber: "90-02", beatRate: 28800, powerReserveHours: 42 },
-  ],
-  Montblanc: [
-    { model: "1858 Automatic", movementType: "automatic", caliber: "MB 24.15 (SW200-1)", beatRate: 28800, powerReserveHours: 38 },
-    { model: "Star Legacy Automatic Date", movementType: "automatic", caliber: "MB 24.17 (SW200-1)", beatRate: 28800, powerReserveHours: 38 },
-  ],
-  Rado: [
-    { model: "Captain Cook Automatic", movementType: "automatic", caliber: "R763", beatRate: 21600, powerReserveHours: 80 },
-    { model: "True Thinline", movementType: "quartz" },
-  ],
-  Swatch: [
-    { model: "Sistem51", movementType: "automatic", caliber: "Sistem51 (C10111)", beatRate: 21600, powerReserveHours: 90, jewels: 19 },
-    { model: "MoonSwatch", movementType: "quartz" },
-  ],
-  "Ulysse Nardin": [
-    { model: "Marine Torpilleur", movementType: "automatic", caliber: "UN-118", beatRate: 28800, powerReserveHours: 60, cosc: true },
-    { model: "Diver 42", movementType: "automatic", caliber: "UN-816", beatRate: 28800, powerReserveHours: 42 },
-  ],
-  "Vacheron Constantin": [
-    { model: "Overseas", reference: "4500V/110A-B128", movementType: "automatic", caliber: "5100", beatRate: 28800, powerReserveHours: 60, jewels: 37 },
-    { model: "Fiftysix Self-Winding", reference: "4600E/000A-B442", movementType: "automatic", caliber: "1326", beatRate: 28800, powerReserveHours: 48 },
-    { model: "Patrimony Manual-Winding", reference: "81180/000R-9159", movementType: "manual", caliber: "4400 AS", beatRate: 28800, powerReserveHours: 65, jewels: 21 },
+    ["DS Action Diver 38", "ETA C07.111"],
+    ["DS PH200M", "ETA C07.611"],
   ],
   "Frederique Constant": [
-    { model: "Classics Index Automatic", reference: "FC-303NN5B6B", movementType: "automatic", caliber: "FC-303 (SW200-1)", beatRate: 28800, powerReserveHours: 38, jewels: 26 },
-    { model: "Highlife Automatic", reference: "FC-303N4NH6B", movementType: "automatic", caliber: "FC-303", beatRate: 28800, powerReserveHours: 38, jewels: 26 },
+    ["Classics Index Automatic", "Sellita SW200-1", { caliber: "FC-303 (Sellita SW200-1)" }],
+    ["Highlife Automatic", "Sellita SW200-1", { caliber: "FC-303 (Sellita SW200-1)" }],
+  ],
+  Blancpain: [
+    ["Fifty Fathoms Automatique", "Blancpain 1315"],
+    ["Fifty Fathoms Bathyscaphe", "Blancpain 1315"],
+  ],
+  Bulova: [
+    ["Lunar Pilot", null],
+    ["Oceanographer", "Miyota 821D", { aliases: ["Devil Diver"] }],
+  ],
+  Damasko: [
+    ["DA36", "ETA 2836-2"],
+    ["DS30", "Sellita SW200-1"],
+  ],
+  Doxa: [
+    ["Sub 300", "ETA 2824-2", { cosc: true }],
+    ["Sub 300T", "ETA 2824-2"],
+    ["Sub 200", "ETA 2824-2"],
+  ],
+  "Girard-Perregaux": [["Laureato 42", "Girard-Perregaux GP01800"]],
+  "Glashütte Original": [
+    ["Senator Excellence", "Glashütte Original 36-01"],
+    ["SeaQ", "Glashütte Original 39-11"],
+    ["PanoMaticLunar", "Glashütte Original 90-02"],
+  ],
+  Montblanc: [
+    ["1858 Automatic", "Sellita SW200-1", { caliber: "MB 24.15 (Sellita SW200-1)" }],
+    ["Star Legacy Automatic Date", "Sellita SW200-1", { caliber: "MB 24.17 (Sellita SW200-1)" }],
+  ],
+  Rado: [
+    ["Captain Cook Automatic", "Rado R763"],
+    ["True Thinline", null],
+  ],
+  Swatch: [
+    ["Sistem51", "Swatch Sistem51"],
+    ["MoonSwatch", null],
+  ],
+  "Ulysse Nardin": [
+    ["Marine Torpilleur", "Ulysse Nardin UN-118", { cosc: true }],
+    ["Diver 42", "Ulysse Nardin UN-816"],
+  ],
+  "Vacheron Constantin": [
+    ["Overseas", "Vacheron Constantin 5100"],
+    ["Fiftysix Self-Winding", "Vacheron Constantin 1326"],
+    ["Patrimony Manual-Winding", "Vacheron Constantin 4400 AS"],
+  ],
+  Vostok: [
+    ["Amphibia", "Vostok 2416B"],
+    ["Komandirskie Automatic", "Vostok 2416B"],
+  ],
+  "Bell & Ross": [
+    ["BR 03-92", "Sellita SW300-1", { caliber: "BR-CAL.302 (Sellita SW300-1)" }],
+    ["BR 05", "Sellita SW300-1", { caliber: "BR-CAL.321 (Sellita SW300-1)" }],
+  ],
+  Seagull: [["1963 Chronograph", "Seagull ST1901", { aliases: ["Seagull 1963"] }]],
+  Timex: [
+    ["Marlin Automatic", "Miyota 8215"],
+    ["Q Timex", null],
+    ["Weekender", null],
+    ["Expedition", null],
   ],
 };
+
+function expand(brand: string, [model, movement, opts]: Row): CatalogModel {
+  const m = movement ? MOVEMENT_INDEX.get(movement.toLowerCase()) : undefined;
+  // a mistyped movement name must not take the app down; the catalog test catches it
+  if (movement && !m) console.error(`watch-catalog: ${brand} ${model} names an unknown movement "${movement}"`);
+  return {
+    model,
+    aliases: opts?.aliases,
+    reference: opts?.reference,
+    movementType: m?.type ?? "quartz",
+    caliber: opts?.caliber ?? (m ? caliberText(m, brand) : undefined),
+    beatRate: m?.beatRate,
+    powerReserveHours: m?.powerReserveHours,
+    cosc: opts?.cosc,
+    checked: m?.checked,
+  };
+}
+
+export const WATCH_MODELS: Record<string, CatalogModel[]> = Object.fromEntries(
+  Object.entries(CATALOG).map(([brand, rows]) => [brand, rows.map((r) => expand(brand, r))])
+);
+
+export const WATCH_BRANDS: string[] = Object.keys(CATALOG).sort((a, b) => a.localeCompare(b));
 
 /** Case/diacritic-insensitive "starts with or contains" filter with ranking. */
 export function filterSuggestions(query: string, options: string[], limit = 8): string[] {
