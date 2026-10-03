@@ -12,7 +12,7 @@ import {
   lastRegulationDate, lastServiceDate, MIN_MEASUREMENTS_FOR_GRADE,
 } from "@/lib/grades";
 import { fmtTotal, relTime } from "@/lib/utils";
-import { MeasurementDialog } from "@/components/forms";
+import { MeasurementDialog, NoWatches } from "@/components/forms";
 import { RateChart, OffsetChart, AccuracyHeatmap } from "@/components/charts";
 import {
   ChartCard, GradeBadge, HealthBadge, HealthRing, SectionTitle, StatCard,
@@ -38,6 +38,7 @@ export default function DashboardPage() {
     return { ms, stats, services, health, grade, spec, chartData };
   }, [watch, measurementsFor, servicesFor]);
 
+  if (ready && !watch) return <NoWatches />;
   if (!ready || !watch || !data) {
     return (
       <div className="space-y-4">

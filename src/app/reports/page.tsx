@@ -12,6 +12,7 @@ import { expectedScatter, nextServiceEstimate } from "@/lib/grades";
 import { GradeBadge, HealthBadge, SectionTitle, StatCard } from "@/components/widgets";
 import { Button, Card, Skeleton, Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui";
 import { csvField, exportMeasurementsCsv } from "@/components/measurements-table";
+import { NoWatches } from "@/components/forms";
 
 const DAY_MS = 86_400_000;
 
@@ -98,6 +99,7 @@ export default function ReportsPage() {
       nextService: nextServiceEstimate(watch, services, store.settings.serviceIntervalYears) };
   }, [watch, measurementsFor, servicesFor, analysisFor, store.settings.serviceIntervalYears]);
 
+  if (ready && !watch) return <NoWatches />;
   if (!ready || !watch || !report) return <Skeleton className="h-96" />;
 
   const { stats, weekly, monthly, health, grade } = report;

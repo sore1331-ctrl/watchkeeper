@@ -6,6 +6,7 @@ import React, { useMemo, useState } from "react";
 import { useStore } from "@/lib/store";
 import { forecastOffsets, groupByPeriod, rollingAverage } from "@/lib/stats";
 import { analyzeWatch } from "@/lib/analysis";
+import { NoWatches } from "@/components/forms";
 import {
   AccuracyHeatmap, OffsetChart, PeriodBars, PredictionChart, RateChart,
   TempScatter, WearFrequencyChart,
@@ -60,6 +61,7 @@ export default function AnalyticsPage() {
     };
   }, [watch, rangeDays, measurementsFor, servicesFor]);
 
+  if (ready && !watch) return <NoWatches />;
   if (!ready || !watch || !data) return <Skeleton className="h-96" />;
 
   return (

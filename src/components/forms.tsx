@@ -3,13 +3,13 @@
 // ─── Entry forms: quick measurement, watch profile, service record ──────────
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Plus } from "lucide-react";
+import { Plus, Watch as WatchIcon } from "lucide-react";
 import { useStore } from "@/lib/store";
 import type {
   Measurement, MovementType, ServiceRecord, ServiceType, Watch, WatchPosition,
   WishlistItem, WishlistPriority, WishlistStatus,
 } from "@/lib/types";
-import { Button, Dialog, DialogContent, DialogTrigger, Input, Label, Select, Switch, Textarea } from "./ui";
+import { Button, Dialog, DialogContent, DialogTrigger, Empty, Input, Label, Select, Switch, Textarea } from "./ui";
 import {
   filterSuggestions, modelsForBrand, specForCaliber, WATCH_BRANDS, type CatalogModel,
 } from "@/lib/watch-catalog";
@@ -785,6 +785,18 @@ export function WatchDialog({
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/** Shown by pages that analyse a watch when the collection has none. */
+export function NoWatches() {
+  return (
+    <Empty icon={<WatchIcon className="h-8 w-8" />} title="No watches yet">
+      <p>Add your first watch to start tracking how it keeps time.</p>
+      <div className="mt-4">
+        <WatchDialog trigger={<Button><Plus className="h-4 w-4" /> Add watch</Button>} />
+      </div>
+    </Empty>
   );
 }
 
