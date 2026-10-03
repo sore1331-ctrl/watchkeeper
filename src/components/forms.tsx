@@ -203,13 +203,160 @@ function ReferenceClock({ onUse }: { onUse: (t: string) => void }) {
       className="w-full cursor-pointer rounded-xl border border-border-token bg-surface-2/60 p-3 text-center transition-colors hover:border-accent/40"
       title="Tap to stamp the reference field with this time"
     >
-      <p className="text-[10px] uppercase tracking-wider text-muted">Reference clock — tap to use</p>
+      <p className="text-[10px] uppercase tracking-wider text-muted">Or type the times — tap to stamp the reference</p>
       <p className="font-mono text-2xl font-bold tabular-nums">{text}</p>
       <p className="mt-0.5 text-[10px] text-faint">
         This device&apos;s own clock. It is usually within a second of true time but
         is not checked — compare it with time.is if the last second matters.
       </p>
     </button>
+  );
+}
+
+// ── Tap to capture ──────────────────────────────────────────────────────────
+// Typing two times is the slow, error-prone part of a reading. Instead: watch
+// the seconds hand, tap as it crosses a mark. The tap fixes the reference
+// time to the millisecond, and the watch's own time at that instant is known
+// — its seconds are the mark, and its minute is whichever one puts it nearest
+// to where the watch was expected to be.
+
+/** Seconds marks the hand can be read against; 12 is the easiest to judge. */
+const MARKS = [
+  { value: 0, label: "12" },
+  { value: 15, label: "3" },
+  { value: 30, label: "6" },
+  { value: 45, label: "9" },
+];
+
+export interface Tap {
+  /** device time of the tap, epoch ms */
+  refMs: number;
+  /** seconds the hand was pointing at */
+  mark: number;
+}
+
+/**
+ * The time the watch showed at a tap: the instant nearest to where the watch
+ * was expected to be whose seconds equal the mark. Good for any watch within
+ * half a minute of the expectation; beyond that the minute is one out, which
+ * the −/+ minute controls correct.
+ */
+export function watchTimeAtTap(tapMs: number, expectedOffsetS: number, markSeconds: number): number {
+  const expected = tapMs + expectedOffsetS * 1000;
+  return Math.round((expected - markSeconds * 1000) / 60_000) * 60_000 + markSeconds * 1000;
+}
+
+/**
+ * Turn a run of taps into one offset. The first tap is placed against the
+ * expected offset; each later one against the tap before it, so they cannot
+ * land in different minutes. Several taps average out reaction time.
+ */
+export function resolveTaps(taps: Tap[], expectedOffsetS: number, minuteShift: number) {
+  if (!taps.length) return null;
+  let expected = expectedOffsetS + minuteShift * 60;
+  const offsets: number[] = [];
+  let lastWatchMs = 0;
+  for (const t of taps) {
+    lastWatchMs = watchTimeAtTap(t.refMs, expected, t.mark);
+    expected = (lastWatchMs - t.refMs) / 1000;
+    offsets.push(expected);
+  }
+  const mean = offsets.reduce((a, b) => a + b, 0) / offsets.length;
+  return {
+    offset: Math.round(mean * 10) / 10,
+    count: offsets.length,
+    /** widest disagreement between taps, seconds — the reaction-time scatter */
+    spread: offsets.length > 1 ? Math.max(...offsets) - Math.min(...offsets) : null,
+    lastRefMs: taps[taps.length - 1].refMs,
+    lastWatchMs,
+  };
+}
+
+const hmsOfMs = (ms: number) => {
+  const d = new Date(ms);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+};
+
+function TapCapture({
+  mark, onMark, onTap, captured, onShiftMinute, onReset,
+}: {
+  mark: number;
+  onMark: (m: number) => void;
+  onTap: (tapMs: number) => void;
+  captured: ReturnType<typeof resolveTaps>;
+  onShiftMinute: (by: number) => void;
+  onReset: () => void;
+}) {
+  /** When the press happened, not when this handler got round to running. */
+  const tapTime = (e: { timeStamp: number }) => Date.now() - Math.max(0, performance.now() - e.timeStamp);
+  return (
+    <div className="rounded-xl border border-accent/40 bg-accent/5 p-3">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs font-semibold">Tap to capture</p>
+        <div className="flex items-center gap-1 text-[11px] text-muted" role="group" aria-label="Seconds mark to tap at">
+          <span className="mr-1">hand at</span>
+          {MARKS.map((m) => (
+            <button
+              key={m.value} type="button" onClick={() => onMark(m.value)}
+              aria-pressed={mark === m.value}
+              className={`h-7 min-w-7 cursor-pointer rounded-md px-1.5 text-xs font-semibold ${
+                mark === m.value ? "bg-accent text-background" : "bg-surface-2 text-muted hover:text-foreground"
+              }`}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <button
+        type="button"
+        // pointerdown, not click: a click fires on release, a tenth of a second late
+        onPointerDown={(e) => { e.preventDefault(); onTap(tapTime(e)); }}
+        onKeyDown={(e) => {
+          if ((e.key === " " || e.key === "Enter") && !e.repeat) { e.preventDefault(); onTap(tapTime(e)); }
+        }}
+        className="mt-2 h-16 w-full cursor-pointer touch-manipulation select-none rounded-xl bg-accent text-base font-bold text-background transition-transform active:scale-[0.98]"
+      >
+        Tap as the seconds hand crosses {MARKS.find((m) => m.value === mark)?.label}
+      </button>
+      {captured ? (
+        <div className="mt-2 space-y-1.5 text-xs">
+          <p className="text-muted">
+            Watch read <span className="font-mono font-semibold text-foreground">{hmsOfMs(captured.lastWatchMs)}</span>{" "}
+            when this device read{" "}
+            <span className="font-mono font-semibold text-foreground">
+              {hmsOfMs(captured.lastRefMs)}.{Math.floor((captured.lastRefMs % 1000) / 100)}
+            </span>
+          </p>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            {/* taps that disagree by more than a second were not all on the mark */}
+            <span className={captured.spread != null && captured.spread > 1 ? "font-medium text-warning" : "text-muted"}>
+              {captured.count === 1
+                ? "Tap again at the next mark to average out reaction time."
+                : captured.spread! > 1
+                  ? `${captured.count} taps disagree by ${captured.spread!.toFixed(1)} s — one was mistimed. Start over.`
+                  : `${captured.count} taps averaged · they agree within ${captured.spread!.toFixed(1)} s`}
+            </span>
+            <span className="flex items-center gap-1">
+              <button type="button" onClick={() => onShiftMinute(-1)}
+                className="cursor-pointer rounded-md bg-surface-2 px-2 py-1 font-medium hover:text-accent">−1 min</button>
+              <button type="button" onClick={() => onShiftMinute(1)}
+                className="cursor-pointer rounded-md bg-surface-2 px-2 py-1 font-medium hover:text-accent">+1 min</button>
+              <button type="button" onClick={onReset}
+                className="cursor-pointer rounded-md px-2 py-1 font-medium text-muted hover:text-foreground">Start over</button>
+            </span>
+          </div>
+          <p className="text-[11px] text-faint">
+            Wrong minute? The minute is worked out from the last reading — nudge it if the watch has been reset since.
+          </p>
+        </div>
+      ) : (
+        <p className="mt-2 text-[11px] text-muted">
+          No typing: the tap records this device&apos;s time to the tenth of a second and works out what the watch showed.
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -231,8 +378,16 @@ export function MeasurementDialog({
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
 }) {
-  const { watches, measurementsFor, addMeasurement, updateMeasurement } = useStore();
+  const { watches, measurementsFor, analysisFor, addMeasurement, updateMeasurement } = useStore();
   const active = watches.filter((w) => !w.archived);
+  // tap-to-capture: the taps so far, the mark being tapped at, and any minute correction
+  const [taps, setTaps] = useState<Tap[]>([]);
+  const [mark, setMark] = useState(0);
+  const [minuteShift, setMinuteShift] = useState(0);
+  // Whether the time fields were typed into. Until they are, the offset comes
+  // from the capture (or, when editing, from the reading as stored) — both
+  // are finer than the whole seconds the two fields can express.
+  const [timesEdited, setTimesEdited] = useState(false);
   const [openState, setOpen] = useState(false);
   const open = openProp ?? openState;
   const editing = !!existing;
@@ -253,14 +408,32 @@ export function MeasurementDialog({
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) =>
     setForm((f) => ({ ...f, [k]: v }));
 
+  const clearCapture = () => {
+    setTaps([]);
+    setMinuteShift(0);
+  };
+
+  /** A time field was typed into: from here the fields are the truth. */
+  const editTime = (k: "referenceTime" | "watchTime", v: string) => {
+    if (v !== form[k]) {
+      clearCapture();
+      setTimesEdited(true);
+    }
+    set(k, v);
+  };
+
   /** Stamp both time fields with the current clock — on open and on demand. */
   const syncToNow = () => {
     const t = nowHms();
+    clearCapture();
+    setTimesEdited(true);
     setForm((f) => ({ ...f, referenceTime: t, watchTime: t }));
   };
 
   /** Load an existing reading into the form, exactly as recorded. */
-  const loadExisting = (m: Measurement) =>
+  const loadExisting = (m: Measurement) => {
+    clearCapture();
+    setTimesEdited(false);
     setForm({
       watchId: m.watchId,
       measuredAt: toLocalInput(m.measuredAt),
@@ -274,6 +447,7 @@ export function MeasurementDialog({
       excludeFromRate: !!m.excludeFromRate,
       notes: m.notes ?? "",
     });
+  };
 
   // A parent can open this dialog by flipping `open` (the measurements table
   // does exactly that). Radix only reports its own interactions, so the form
@@ -289,6 +463,8 @@ export function MeasurementDialog({
         loadExisting(existing);
       } else {
         const t = nowHms();
+        clearCapture();
+        setTimesEdited(false);
         setForm((f) => ({
           ...f,
           // The dialog stays mounted while the page's selected watch changes, so
@@ -312,7 +488,44 @@ export function MeasurementDialog({
     setOpen(next);
   };
 
+  const prev = useMemo(() => {
+    const ms = measurementsFor(form.watchId);
+    return ms[ms.length - 1] ?? null;
+  }, [form.watchId, measurementsFor]);
+
+  // Where the watch should be by now: its last offset plus its usual rate
+  // over the time since. Only used to pick the minute for a capture.
+  const expectedOffsetAt = (tapMs: number) => {
+    if (!prev) return 0;
+    const rate = analysisFor(form.watchId)?.stats.avgSpd ?? 0;
+    return prev.offsetSeconds + (rate * (tapMs - +new Date(prev.measuredAt))) / 86_400_000;
+  };
+
+  const resolve = (ts: Tap[], shift: number) =>
+    ts.length ? resolveTaps(ts, expectedOffsetAt(ts[0].refMs), shift) : null;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const captured = useMemo(() => resolve(taps, minuteShift), [taps, minuteShift, prev]);
+
+  /** Record taps / a minute correction, and show the result in the time fields. */
+  const applyCapture = (nextTaps: Tap[], nextShift: number) => {
+    const r = resolve(nextTaps, nextShift);
+    setTaps(nextTaps);
+    setMinuteShift(nextShift);
+    setTimesEdited(false);
+    if (r)
+      setForm((f) => ({
+        ...f,
+        measuredAt: toLocalInput(new Date(r.lastRefMs).toISOString()),
+        referenceTime: hmsOfMs(r.lastRefMs),
+        watchTime: hmsOfMs(r.lastWatchMs),
+      }));
+  };
+
   const offset = useMemo(() => {
+    if (captured) return captured.offset;
+    // an untouched edit keeps the stored offset rather than re-deriving a
+    // coarser one from the two whole-second fields
+    if (existing && !timesEdited) return existing.offsetSeconds;
     const ref = parseHms(form.referenceTime);
     const wt = parseHms(form.watchTime);
     if (ref == null || wt == null) return null;
@@ -320,12 +533,7 @@ export function MeasurementDialog({
     if (d > 43200) d -= 86400; // wrap midnight
     if (d < -43200) d += 86400;
     return Math.round(d * 10) / 10;
-  }, [form.referenceTime, form.watchTime]);
-
-  const prev = useMemo(() => {
-    const ms = measurementsFor(form.watchId);
-    return ms[ms.length - 1] ?? null;
-  }, [form.watchId, measurementsFor]);
+  }, [captured, existing, timesEdited, form.referenceTime, form.watchTime]);
 
   const projectedSpd = useMemo(() => {
     if (offset == null || !prev) return null;
@@ -367,6 +575,7 @@ export function MeasurementDialog({
     }
 
     addMeasurement(fields as Omit<Measurement, "id">);
+    clearCapture();
     handleOpenChange(false);
     // clear the per-reading fields; timeAdjusted especially must not stick,
     // or every later measurement would be treated as a fresh baseline
@@ -393,7 +602,7 @@ export function MeasurementDialog({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label>Watch</Label>
-              <Select value={form.watchId} onChange={(e) => set("watchId", e.target.value)}>
+              <Select value={form.watchId} onChange={(e) => { clearCapture(); set("watchId", e.target.value); }}>
                 {active.map((w) => (
                   <option key={w.id} value={w.id}>
                     {w.brand} {w.model}
@@ -411,7 +620,22 @@ export function MeasurementDialog({
             </div>
           </div>
           {!editing && (
-            <ReferenceClock onUse={(t) => set("referenceTime", t)} />
+            <TapCapture
+              mark={mark}
+              onMark={setMark}
+              captured={captured}
+              onTap={(refMs) => {
+                // a second press within two seconds is a bounce, not a reading
+                const last = taps[taps.length - 1];
+                if (last && refMs - last.refMs < 2000) return;
+                applyCapture([...taps, { refMs, mark }], minuteShift);
+              }}
+              onShiftMinute={(by) => applyCapture(taps, minuteShift + by)}
+              onReset={clearCapture}
+            />
+          )}
+          {!editing && (
+            <ReferenceClock onUse={(t) => editTime("referenceTime", t)} />
           )}
 
           <div className="grid grid-cols-2 gap-3">
@@ -428,7 +652,7 @@ export function MeasurementDialog({
               </div>
               <TimeInput
                 value={form.referenceTime}
-                onChange={(v) => set("referenceTime", v)}
+                onChange={(v) => editTime("referenceTime", v)}
                 placeholder="14:30:00"
               />
             </div>
@@ -436,7 +660,7 @@ export function MeasurementDialog({
               <Label>Watch time</Label>
               <TimeInput
                 value={form.watchTime}
-                onChange={(v) => set("watchTime", v)}
+                onChange={(v) => editTime("watchTime", v)}
                 placeholder="14:30:04"
               />
             </div>
