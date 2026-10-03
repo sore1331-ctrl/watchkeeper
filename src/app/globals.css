@@ -3,54 +3,63 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+/*
+ * Two palettes. Light is "paper and racing green", dark is "midnight and
+ * brass". Every colour used as text is at least 4.5:1 on --surface and on
+ * --surface-2; change one and re-check it.
+ *
+ * The dark accent (brass) carries no status meaning, so the status scale
+ * avoids amber there: warning is orange and the top grade is platinum, not
+ * gold. In the light theme the accent and "positive" are both greens — the
+ * accent is the darker, bluer one.
+ */
 :root {
-  --background: #f4f5f7;
-  --surface: #ffffff;
-  --surface-2: #eef0f3;
-  --glass: rgba(255, 255, 255, 0.72);
-  --border: rgba(15, 23, 42, 0.1);
-  --foreground: #0f172a;
-  --muted: #64748b;
-  /* Everything below is used as text, so each is at least 4.5:1 on --surface. */
-  --faint: #636e7e;
-  --accent: #0f766e;
-  --positive: #04704f;
-  --warning: #a34d07;
-  --critical: #c81e1e;
+  --background: #f5f1ea;
+  --surface: #fffdf8;
+  --surface-2: #efe9df;
+  --glass: rgba(255, 253, 248, 0.8);
+  --border: rgba(31, 27, 22, 0.13);
+  --foreground: #1f1b16;
+  --muted: #665f55;
+  --faint: #6f685e;
+  --accent: #1f6b4a;
+  --positive: #177245;
+  --warning: #9a5200;
+  --critical: #b3261e;
   --info: #1d4ed8;
-  --chart-grid: rgba(15, 23, 42, 0.07);
+  --chart-grid: rgba(31, 27, 22, 0.08);
   /* Grade and health badges: dark ink on a pale tint of itself. */
-  --grade-cosc: #7a5c00;
-  --grade-excellent: #04704f;
+  --grade-cosc: #3f4a5a;
+  --grade-excellent: #177245;
   --grade-very-good: #0e6f68;
   --grade-good: #1d4ed8;
-  --grade-fair: #875708;
-  --grade-poor: #b43c0a;
-  --grade-critical: #b91c1c;
+  --grade-fair: #7d5206;
+  --grade-poor: #ac3a0a;
+  --grade-critical: #b3261e;
 }
 
 .dark {
-  --background: #0a0e14;
-  --surface: #10151d;
-  --surface-2: #161d27;
-  --glass: rgba(22, 29, 39, 0.6);
-  --border: rgba(148, 163, 184, 0.13);
-  --foreground: #e6eaf0;
-  --muted: #8b98ab;
-  --faint: #7a8799;
-  --accent: #2dd4bf;
-  --positive: #34d399;
-  --warning: #fbbf24;
-  --critical: #f87171;
-  --info: #60a5fa;
-  --chart-grid: rgba(148, 163, 184, 0.1);
-  --grade-cosc: #c9a227;
-  --grade-excellent: #34d399;
-  --grade-very-good: #6ee7b7;
-  --grade-good: #60a5fa;
-  --grade-fair: #fbbf24;
-  --grade-poor: #fb923c;
-  --grade-critical: #f87171;
+  --background: #0c0e11;
+  --surface: #14171c;
+  --surface-2: #1b2027;
+  --glass: rgba(27, 32, 39, 0.7);
+  --border: rgba(236, 232, 225, 0.11);
+  --foreground: #ece8e1;
+  --muted: #a39d92;
+  --faint: #918a7e;
+  --accent: #d9b36a;
+  --positive: #5fd39a;
+  --warning: #f08a4b;
+  --critical: #f2777a;
+  --info: #7fb0f5;
+  --chart-grid: rgba(236, 232, 225, 0.08);
+  --grade-cosc: #c8d0dc;
+  --grade-excellent: #5fd39a;
+  --grade-very-good: #6fd6c4;
+  --grade-good: #7fb0f5;
+  --grade-fair: #f5c542;
+  --grade-poor: #f08a4b;
+  --grade-critical: #f2777a;
 }
 
 @theme inline {
@@ -81,15 +90,13 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* soft radial glow behind the app, dark mode only */
+/* a faint warm lift at the top of the page, dark mode only */
 .dark body::before {
   content: "";
   position: fixed;
   inset: 0;
   pointer-events: none;
-  background:
-    radial-gradient(600px 400px at 15% -10%, rgba(45, 212, 191, 0.07), transparent 60%),
-    radial-gradient(800px 500px at 90% 0%, rgba(96, 165, 250, 0.05), transparent 60%);
+  background: radial-gradient(900px 420px at 50% -15%, rgba(217, 179, 106, 0.05), transparent 65%);
   z-index: 0;
 }
 
