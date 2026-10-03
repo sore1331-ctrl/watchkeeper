@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { useStore } from "@/lib/store";
 import {
-  fmtSec, fmtSpd, groupByPeriod, IMPLAUSIBLE_SPD, rollingAverage,
+  fmtSec, fmtSpd, forecastOffsets, groupByPeriod, IMPLAUSIBLE_SPD, rollingAverage,
 } from "@/lib/stats";
 import {
   batteryRemaining, daysSince,
@@ -57,17 +57,7 @@ export default function WatchDetailPage() {
     }));
     const weekly = groupByPeriod(stats.samples, "week").slice(-12);
     const monthly = groupByPeriod(stats.samples, "month");
-    // forecast
-    const rate = stats.rolling7 ?? stats.avgSpd ?? 0;
-    const sd = stats.stdDev ?? 0;
-    const lastDate = stats.lastMeasuredAt ? +new Date(stats.lastMeasuredAt) : Date.now();
-    const off = stats.currentOffset ?? 0;
-    const forecast = [7, 14, 30, 60, 90].map((d) => ({
-      date: new Date(lastDate + d * DAY_MS).toISOString(),
-      predicted: +(off + rate * d).toFixed(1),
-      lo: +(off + (rate - 1.96 * sd / Math.sqrt(Math.max(stats.samples.length, 2))) * d).toFixed(1),
-      hi: +(off + (rate + 1.96 * sd / Math.sqrt(Math.max(stats.samples.length, 2))) * d).toFixed(1),
-    }));
+    const forecast = forecastOffsets(stats);
     const history = stats.samples.slice(-45).map((s) => ({ date: s.date, offset: +s.offset.toFixed(1) }));
     const wearByDay = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((weekday, i) => ({
       weekday,
@@ -268,7 +258,7 @@ export default function WatchDetailPage() {
             </ChartCard>
           </div>
           <div className="grid gap-4 lg:grid-cols-2">
-            <ChartCard title="Prediction curve" sub="45-day history + 90-day forecast with 95% confidence band">
+            <ChartCard title="Prediction curve" sub="45-day history + 90-day forecast with an approximate 95% range">
               <PredictionChart history={data.history} forecast={data.forecast} color={watch.accentColor} />
             </ChartCard>
             <ChartCard title="Weekly averages" sub="mean s/d per ISO week">

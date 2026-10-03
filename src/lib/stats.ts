@@ -610,6 +610,36 @@ export function computeStats(
   };
 }
 
+/**
+ * Where the offset is likely to be N days after the last reading.
+ *
+ * The range has two parts. The average rate is itself uncertain, and that
+ * error compounds every day (grows with d). And the watch does not run at its
+ * average every day — its ordinary scatter accumulates like a random walk
+ * (grows with √d). Leaving the second out, as an earlier version did, draws a
+ * band far narrower than where the watch actually ends up.
+ */
+export function forecastOffsets(
+  stats: WatchStats,
+  days: number[] = [7, 14, 30, 60, 90]
+): { date: string; predicted: number; lo: number; hi: number }[] {
+  const rate = stats.rolling7 ?? stats.avgSpd ?? 0;
+  const sd = stats.stdDev ?? 0;
+  const n = Math.max(stats.headlineSamples.length, 2);
+  const last = stats.lastMeasuredAt ? +new Date(stats.lastMeasuredAt) : Date.now();
+  const off = stats.currentOffset ?? 0;
+  return days.map((d) => {
+    const centre = off + rate * d;
+    const half = 1.96 * Math.hypot((sd / Math.sqrt(n)) * d, sd * Math.sqrt(d));
+    return {
+      date: new Date(last + d * DAY_MS).toISOString(),
+      predicted: +centre.toFixed(1),
+      lo: +(centre - half).toFixed(1),
+      hi: +(centre + half).toFixed(1),
+    };
+  });
+}
+
 // ─── Aggregations for charts & reports ──────────────────────────────────────
 
 export interface PeriodStat {

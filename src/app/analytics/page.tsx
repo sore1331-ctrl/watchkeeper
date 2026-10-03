@@ -4,7 +4,7 @@
 
 import React, { useMemo, useState } from "react";
 import { useStore } from "@/lib/store";
-import { groupByPeriod, rollingAverage } from "@/lib/stats";
+import { forecastOffsets, groupByPeriod, rollingAverage } from "@/lib/stats";
 import { analyzeWatch } from "@/lib/analysis";
 import {
   AccuracyHeatmap, OffsetChart, PeriodBars, PredictionChart, RateChart,
@@ -43,17 +43,7 @@ export default function AnalyticsPage() {
       rolling7: +r7[i].value.toFixed(2), rolling30: +r30[i].value.toFixed(2),
       offset: s.offset,
     }));
-    const rate = stats.rolling7 ?? stats.avgSpd ?? 0;
-    const sd = stats.stdDev ?? 0;
-    const last = stats.lastMeasuredAt ? +new Date(stats.lastMeasuredAt) : Date.now();
-    const off = stats.currentOffset ?? 0;
-    const n = Math.max(stats.samples.length, 2);
-    const forecast = [7, 14, 30, 60, 90].map((d) => ({
-      date: new Date(last + d * DAY_MS).toISOString(),
-      predicted: +(off + rate * d).toFixed(1),
-      lo: +(off + (rate - 1.96 * sd / Math.sqrt(n)) * d).toFixed(1),
-      hi: +(off + (rate + 1.96 * sd / Math.sqrt(n)) * d).toFixed(1),
-    }));
+    const forecast = forecastOffsets(stats);
     const wearByDay = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((weekday, i) => ({
       weekday,
       count: ms.filter((m) => m.wornToday && (new Date(m.measuredAt).getDay() + 6) % 7 === i).length,
@@ -154,7 +144,7 @@ export default function AnalyticsPage() {
 
         <TabsContent value="prediction">
           <ChartCard title="Prediction curve"
-            sub="measured offset + forecast with 95% confidence band (based on 7-day rate)">
+            sub="measured offset + forecast with an approximate 95% range (based on 7-day rate)">
             <PredictionChart history={data.history} forecast={data.forecast}
               color={watch.accentColor} height={380} />
           </ChartCard>
