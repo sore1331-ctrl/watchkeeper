@@ -1,7 +1,7 @@
 # Audit changes — keep or revert
 
 Everything changed since the code review, on branch `audit-fixes`. Nothing here
-is on `main`, and nothing was changed in the live Supabase database.
+was on `main` until the merge recorded under "Decided" below.
 
 Each row is a decision for you. The commits after the first are one topic
 each, so `git revert <commit>` undoes just that row. The first commit
@@ -53,29 +53,29 @@ but I could not exercise it (mostly because it needs a signed-in account).
 | 31 | `15d432d` | Rate uncertainty allows 0.5 s for the unchecked device clock as well as 0.5 s for reading the dial | It assumed a perfect reference. **This widens the stated ± error** by about 40%, and the 95% interval by less. The 0.5 s figure is an assumption | Type-checked |
 | 32 | `4f655b7` | One fallback currency (GBP) in the row mappers; migration `0009` aligns the column defaults | Tables disagreed (EUR vs GBP). No visible effect — the fallback never triggers | Type-checked |
 
-## Not done — needs your decision
+## Decided on 2026-10-03
 
-- **Apply migration `0007` to the live database.** Until then an old offline
-  edit uploaded late can still beat a newer one.
-- **Apply migration `0008`.** Adds one JSON column to `wk_settings`. Settings
-  sync (row 30) does nothing until it is applied.
-- **Apply migration `0009`.** Changes two column defaults from EUR to GBP.
-  Cosmetic.
-- **Merge `audit-fixes` into `main`.** May deploy to production; the
-  production CSP (row 10) has not been run in a production build.
-- **Supabase dashboard:** turn on leaked-password protection and raise the
-  minimum password length. I cannot change these from here.
-- **"Worn today" meaning.** The code reads it as "worn until the next
-  reading", and Position "On wrist" duplicates it. Relabelling changes what
-  existing readings mean.
-- **Per-user primary keys in the database.** Not migrated; random ids make a
-  collision impractical, and the migration would rewrite keys on the shared
-  live project.
-- **13 unused `wk_` tables and the `wk-photos` bucket.** Left in place;
-  dropping them is destructive.
+- **Migrations `0007`, `0008`, `0009` applied** to the live database and
+  verified there. Settings sync (row 30) is now active.
+- **`audit-fixes` merged into `main`.** A production build was run first and
+  the strict Content-Security-Policy (row 10) loaded every page checked with
+  no console errors.
+- **"Worn today" stays as it is** — it is a good metric as designed.
+- **No Fahrenheit.** The removed setting (row 21) stays removed.
+- **Unused tables left in place.** All 12 unused `wk_` tables and the
+  `wk-photos` bucket are empty, so dropping them later loses nothing.
+
+## Still open
+
+- **Supabase dashboard (yours):** turn on leaked-password protection and
+  raise the minimum password length.
+- **Per-user primary keys in the database.** Not migrated; see the
+  conversation for the trade-off.
 - **Catalog entries I believe are wrong but did not verify:** Lange L093.1
   jewels (28, likely 21), IWC 82100 jewels (31, likely 22), Hangzhou 5000A
   beat rate (21600, likely 28800).
+- **Not exercised:** anything needing a signed-in account, two-tab handling,
+  the storage-full banner, the error-boundary pages, `seed.sql`.
 
 ## Known and unchanged
 
