@@ -54,8 +54,17 @@ const CALIBER_SPECS: { match: RegExp; brands?: string[]; spec: RateSpec }[] = [
   { match: /^9S/i, brands: ["grand seiko", "seiko"], spec: { min: -3, max: 5, source: "Grand Seiko 9S standard" } },
   // Oris Calibre 400 series — Oris's own stated tolerance
   { match: /^(400|401|403|473)\b/, brands: ["oris"], spec: { min: -3, max: 5, source: "Oris Calibre 400 series" } },
-  // Citizen's own 82xx automatics (the Miyota 82xx under its parent's name)
+  // Citizen — each figure is Citizen's own published one. Quartz tolerances
+  // are stated per month or per year; here they are per day like the rest.
   { match: /^82\d\d\b/, brands: ["citizen"], spec: { min: -20, max: 40, source: "Citizen/Miyota 82xx specification" } },
+  { match: /^90\d\d\b/, brands: ["citizen"], spec: { min: -10, max: 20, source: "Citizen 90xx specification" } },
+  { match: /^0950\b/, brands: ["citizen"], spec: { min: -5, max: 10, source: "Citizen Caliber 0950" } },
+  { match: /^0200\b/, brands: ["citizen"], spec: { min: -3, max: 5, source: "The Citizen Caliber 0200" } },
+  { match: /^0100\b/, brands: ["citizen"], spec: { min: -0.003, max: 0.003, source: "The Citizen Caliber 0100 (±1 s/year)" } },
+  { match: /^A060\b/i, brands: ["citizen"], spec: { min: -0.014, max: 0.014, source: "The Citizen A060 (±5 s/year)" } },
+  { match: /^F9\d\d\b/i, brands: ["citizen"], spec: { min: -0.16, max: 0.16, source: "Citizen Satellite Wave F9xx (±5 s/month)" } },
+  // every other Eco-Drive / radio-controlled quartz: a letter and three digits, or the Eco-Drive One
+  { match: /^([A-Z]\d{3}|8826)\b/i, brands: ["citizen"], spec: { min: -0.5, max: 0.5, source: "Citizen Eco-Drive quartz (±15 s/month)" } },
   // Seiko workhorses, also sold to other brands as the NH series
   { match: /\b4R\d\d/i, spec: { min: -35, max: 45, source: "Seiko 4R3x specification" } },
   { match: /\b6R\d\d/i, spec: { min: -15, max: 25, source: "Seiko 6R3x specification" } },
@@ -260,10 +269,28 @@ export const WATCH_MODELS: Record<string, CatalogModel[]> = {
     { model: "A168", reference: "A168WA-1", movementType: "quartz" },
     { model: "Oceanus S100", reference: "OCW-S100-1AJF", movementType: "quartz" },
   ],
+  // Citizen: lines, references, calibers and tolerances looked up 2026-10.
+  // Radio-controlled and GPS models keep their stated accuracy only between
+  // signals; with reception they are corrected daily.
   Citizen: [
+    { model: "Attesa ACT Line Satellite Wave GPS", aliases: ["Attesa GPS", "Attesa F950"], reference: "CC4055-65E", movementType: "quartz", caliber: "F950" },
+    { model: "Attesa Satellite Wave GPS", reference: "CC4105-69E", movementType: "quartz", caliber: "F950" },
+    { model: "Attesa Radio-Controlled", aliases: ["Attesa H874"], reference: "BY1001-66E", movementType: "quartz", caliber: "H874" },
+    { model: "Attesa Radio-Controlled Chronograph", aliases: ["Attesa H800"], movementType: "quartz", caliber: "H800" },
     { model: "Promaster Dive Eco-Drive", reference: "BN0150-28E", movementType: "quartz", caliber: "E168" },
+    { model: "Promaster Mechanical Diver 200m", aliases: ["Fujitsubo"], reference: "NB6021-68L", movementType: "automatic", caliber: "9051", beatRate: 28800, powerReserveHours: 42, jewels: 24 },
+    { model: "Promaster Diver Automatic", aliases: ["NY0040"], reference: "NY0040-17L", movementType: "automatic", caliber: "8203", beatRate: 21600, jewels: 21 },
+    { model: "Promaster Fugu", aliases: ["Fugu"], reference: "NY0155-58X", movementType: "automatic", caliber: "8204", beatRate: 21600, powerReserveHours: 40 },
+    { model: "Promaster Nighthawk", aliases: ["Nighthawk"], reference: "BJ7000-52E", movementType: "quartz", caliber: "B877" },
+    { model: "Promaster Navihawk A-T", aliases: ["Navihawk"], reference: "JY8033-51E", movementType: "quartz", caliber: "U680" },
+    { model: "Series 8 870", reference: "NA1004-87E", movementType: "automatic", caliber: "0950", beatRate: 28800, jewels: 24 },
+    { model: "Series 8 831", reference: "NB6050-51W", movementType: "automatic", caliber: "9051", beatRate: 28800, powerReserveHours: 42, jewels: 24 },
+    { model: "Series 8 880 GMT", reference: "NB6031-56E", movementType: "automatic", caliber: "9054", beatRate: 28800, powerReserveHours: 50 },
     { model: "Tsuyosa", reference: "NJ0150-81E", movementType: "automatic", caliber: "8210", beatRate: 21600, powerReserveHours: 40, jewels: 21 },
-    { model: "The Citizen Chronomaster", reference: "AQ4100-65E", movementType: "quartz", caliber: "A060" },
+    { model: "Eco-Drive One", movementType: "quartz", caliber: "8826" },
+    { model: "The Citizen Chronomaster", reference: "AQ4100-57C", movementType: "quartz", caliber: "A060" },
+    { model: "The Citizen Caliber 0100", reference: "AQ6021-51E", movementType: "quartz", caliber: "0100" },
+    { model: "The Citizen Mechanical Caliber 0200", reference: "NC0210-11A", movementType: "automatic", caliber: "0200", beatRate: 28800, powerReserveHours: 60, jewels: 26 },
   ],
   "Christopher Ward": [
     { model: "C60 Trident Pro 300", reference: "C60-40ADA3-S00K0-B0", movementType: "automatic", caliber: "SW200-1", beatRate: 28800, powerReserveHours: 38, jewels: 26 },
