@@ -65,7 +65,7 @@ but I could not exercise it (mostly because it needs a signed-in account).
 | 38 | `eb31b5c` | Dates use the browser's locale | Hardcoded to British format | Type-checked |
 | 39 | `47db2db` | App icon and web manifest; removed the five default Next.js SVGs and favicon | Leftover scaffolding, no app identity | Tested (icon and manifest are served) |
 
-## Palette and tap-to-capture — branch `palette-and-capture`, not yet on `main`
+## Palette and tap-to-capture — merged into `main` on 2026-10-03
 
 | # | Commit | Change | Why | Checked |
 |---|--------|--------|-----|---------|
@@ -75,6 +75,19 @@ but I could not exercise it (mostly because it needs a signed-in account).
 Known trade-offs in row 40: in the light theme the accent and "positive" are
 both greens. The five chart series colours are unchanged and are below 4.5:1
 on the light surface (3.1–4.2:1), which is acceptable for lines but not text.
+
+## Calculation fixes, layout and installable app — branch `calc-and-app`, not yet on `main`
+
+Rows 42–44 share commit `62f8132`; undoing one on its own is a manual job.
+**Row 42 changes the numbers every watch shows.**
+
+| # | Commit | Change | Why | Checked |
+|---|--------|--------|-----|---------|
+| 42 | `62f8132` | Calculations. (a) Worn % is the share of elapsed time over every interval. (b) "Ran down" applies only to automatics, and only to intervals that also ran clearly slow. (c) Every average is seconds gained ÷ time elapsed — headline, rolling, weekly, monthly, per position. (d) The forecast uses the last 30 days of all intervals, worn and resting, with one rule for the list and the charts | (a) read 100% for a watch worn 21% of the time. (b) discarded about half the readings of resting watches. (c) three different weightings; the headline could be 1.6 s/d for a watch gaining 2.7. (d) used a worn-only rate for a watch that mostly rests | Tested against hand-worked cases and the sample data's known rates: worn % matches to the percent, average equals gain ÷ time, a genuinely stopped automatic is still excluded, a hand-wound watch never is |
+| 43 | `62f8132` | Reporting. 95% interval uses Student-t. No grade ("Too fine to grade") when the average is known less precisely than the band it is judged against. Improvement / decline only named when the trend is significant. The "7 measurements" gate counts the readings actually graded. Heatmap coloured against the watch's own spec, and correct across clock changes. Power-reserve estimate shown for automatics only | Interval was far too narrow with few readings; a quartz was graded on noise; noise was named "largest improvement"; a watch in spec was painted red | Tested in the browser: quartz shows "Too fine to grade", improvement shows "no clear trend", hand-wound watch has no power-reserve card |
+| 44 | `62f8132` | Dashboard leads with four figures and folds the other eight under "More figures"; collection page shows the watches first with the highlights folded away | Twelve equal cards on the dashboard, ten above the first watch | Tested |
+| 45 | `cb20c7e` | Light-theme accent is navy ink (`#1f3a5f`) instead of racing green | Green accent read as "good". Brass was tried on paper and is the same dark amber as "Regulation due" | Contrast computed; not seen rendered |
+| 46 | `061cf3b` | Installable app: PNG, maskable and Apple icons; a service worker caching the app's own files (build assets cache-first, pages network-first with the last copy as fallback). Production only | So it can be added to a phone's home screen and opened without a connection | Tested on a production build: worker active, pages and 28 assets cached, icons served. Not installed on a real phone; offline not simulated |
 
 ## Decided on 2026-10-03
 
