@@ -46,12 +46,21 @@ but I could not exercise it (mostly because it needs a signed-in account).
 | 24 | `dd1ac27` | Wording: grade band text matches the real thresholds; "Good" no longer says a minute a month; rate-change insight reads correctly for a losing watch; variance labelled (s/d)²; reference clock described as the device clock; "Accuracy certificate" renamed "Accuracy summary"; Account page no longer claims a sample-only device matches the account | Text contradicted the code | Tested (reports) |
 | 25 | `5fe509b` | Forecast range includes day-to-day scatter, shared by both pages | The band was much too narrow | Type-checked |
 | 26 | `edd3e11` | Tudor "-U" calibers use METAS 0/+5; "left on winder" demo note only on automatics | Catalog fact; nonsense note on manual and quartz | Type-checked |
-| 27 | this commit | README brought up to date; this file | README described an older app | — |
+| 27 | `8e80f70` | README brought up to date; this file | README described an older app | — |
+| 28 | `58db058` | Error boundaries: a failing page shows a message and the rest of the app keeps working; a failure in the data store shows a page with "Download my data" and "Try again" | Any exception in the store blanked every page | Type-checked — not triggered |
+| 29 | `84861dc` | Trend, stability-change and "rate has shifted" insights and notifications only appear when the last reading is within 14 days; Reports say their weekly and monthly figures end at the last reading | Old readings were described as "this month" and "recent" | Tested (reports line) |
+| 30 | `c5eb102` | Settings and snoozed notifications sync between devices, newest wins | They stayed on one device. **Inactive until migration `0008` is applied**; until then the step is skipped silently | Type-checked |
+| 31 | `15d432d` | Rate uncertainty allows 0.5 s for the unchecked device clock as well as 0.5 s for reading the dial | It assumed a perfect reference. **This widens the stated ± error and the 95% interval** by about 40%. The 0.5 s figure is an assumption | Type-checked |
+| 32 | `4f655b7` | One fallback currency (GBP) in the row mappers; migration `0009` aligns the column defaults | Tables disagreed (EUR vs GBP). No visible effect — the fallback never triggers | Type-checked |
 
 ## Not done — needs your decision
 
 - **Apply migration `0007` to the live database.** Until then an old offline
   edit uploaded late can still beat a newer one.
+- **Apply migration `0008`.** Adds one JSON column to `wk_settings`. Settings
+  sync (row 30) does nothing until it is applied.
+- **Apply migration `0009`.** Changes two column defaults from EUR to GBP.
+  Cosmetic.
 - **Merge `audit-fixes` into `main`.** May deploy to production; the
   production CSP (row 10) has not been run in a production build.
 - **Supabase dashboard:** turn on leaked-password protection and raise the
@@ -67,8 +76,6 @@ but I could not exercise it (mostly because it needs a signed-in account).
 - **Catalog entries I believe are wrong but did not verify:** Lange L093.1
   jewels (28, likely 21), IWC 82100 jewels (31, likely 22), Hangzhou 5000A
   beat rate (21600, likely 28800).
-- **Mixed EUR/GBP currency fallbacks** in the schema and row mappers. They
-  never trigger because the columns are NOT NULL.
 
 ## Known and unchanged
 

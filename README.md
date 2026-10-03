@@ -74,6 +74,9 @@ Settings → "Reset to demo data" restores the sample set.
      measurements and services for sync.
    - `0005`, `0006` — wishlist; exclude-from-rate flag.
    - `0007` — keep the client's edit time so "newer edit wins" holds.
+   - `0008` — a JSON column on `wk_settings` so settings and snoozed
+     notifications sync.
+   - `0009` — one default currency across tables.
 3. `supabase/seed.sql` seeds two starter watches and 15 measurements for one
    named account: `set wk.seed_email = 'you@example.com';` first. It refuses
    to run otherwise, because the project may be shared with other apps.
