@@ -74,10 +74,11 @@ export function generateInsights(
     const avgRec = mean(rec.map((s) => s.spd));
     const avgPrev = mean(prev.map((s) => s.spd));
     const delta = avgRec - avgPrev;
+    const signed = (v: number) => `${v > 0 ? "+" : ""}${v.toFixed(1)}`;
     if (Math.abs(delta) >= 0.8)
       out.push({
         id: nid(), watchId: watch.id, kind: "rate", severity: Math.abs(delta) > 2 ? "warning" : "neutral",
-        text: `The average ${delta > 0 ? "gain" : "loss"} ${Math.abs(avgRec) > Math.abs(avgPrev) ? "increased" : "decreased"} by ${delta > 0 ? "+" : ""}${delta.toFixed(1)} s/d this month.`,
+        text: `${name}'s average rate moved ${signed(delta)} s/d this month, from ${signed(avgPrev)} to ${signed(avgRec)} s/d.`,
       });
   }
 

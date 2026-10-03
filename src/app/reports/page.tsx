@@ -153,17 +153,20 @@ export default function ReportsPage() {
         </div>
       </div>
 
-      {/* Accuracy certificate header (print friendly) */}
+      {/* Summary header (print friendly) */}
       <Card className="mb-6 p-6">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <p className="flex items-center gap-2 text-xs uppercase tracking-widest text-muted">
-              <FileText className="h-3.5 w-3.5" /> Accuracy certificate
+              <FileText className="h-3.5 w-3.5" /> Accuracy summary
             </p>
             <h2 className="mt-1 text-xl font-bold">{watch.brand} {watch.model}</h2>
             <p className="text-sm text-muted">
               {watch.reference} · cal. {watch.caliber} · {stats.count} measurements ·
               generated {new Date().toLocaleDateString("en-GB")}
+            </p>
+            <p className="text-xs text-faint">
+              Self-measured against the owner&apos;s device clock — not a laboratory certificate.
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -199,7 +202,7 @@ export default function ReportsPage() {
                   sub={fmtDay(weekly.slowest.date)} delay={0.1} />
                 <StatCard label="Largest deviation" value={fmtSpd(weekly.largestDev.spd)}
                   sub={fmtDay(weekly.largestDev.date)} delay={0.15} />
-                <StatCard label="Variance" value={weekly.variance.toFixed(2)} sub="s²/d" delay={0.2} />
+                <StatCard label="Variance" value={weekly.variance.toFixed(2)} sub="(s/d)²" delay={0.2} />
                 <StatCard label="Stability score" value={stability != null ? Math.round(stability) : "—"}
                   sub="/ 100" delay={0.25} />
               </div>
@@ -234,7 +237,7 @@ export default function ReportsPage() {
             <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
               <StatCard label="Measurements" value={monthly.count} />
               <StatCard label="Average accuracy" value={fmtSpd(monthly.avg)} delay={0.05} />
-              <StatCard label="Variance" value={monthly.variance.toFixed(2)} sub="s²/d" delay={0.1} />
+              <StatCard label="Variance" value={monthly.variance.toFixed(2)} sub="(s/d)²" delay={0.1} />
               <StatCard label="Best week" value={monthly.best?.label ?? "—"}
                 sub={monthly.best ? fmtSpd(monthly.best.avgSpd) : undefined} delay={0.15} />
               <StatCard label="Worst week" value={monthly.worst?.label ?? "—"}

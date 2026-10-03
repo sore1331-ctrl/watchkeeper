@@ -118,22 +118,25 @@ export const GRADE_COLORS: Record<AccuracyGrade, string> = {
   Critical: "#f87171",
 };
 
-/** Rate band each grade covers, in |s/d|, per movement family. */
+/**
+ * Rate band each grade covers, in |s/d|, per movement family. These describe
+ * the thresholds in accuracyGrade() above — change both together.
+ */
 const GRADE_BANDS: Record<AccuracyGrade, { mech: string; quartz: string }> = {
   COSC: { mech: "−4 to +6 s/d", quartz: "—" },
   Excellent: { mech: "within ±3 s/d", quartz: "within ±0.1 s/d" },
   "Very Good": { mech: "±3–6 s/d", quartz: "±0.1–0.3 s/d" },
-  Good: { mech: "±6–10 s/d", quartz: "±0.3–0.7 s/d" },
-  Fair: { mech: "±10–15 s/d", quartz: "±0.7–1.5 s/d" },
-  Poor: { mech: "±15–25 s/d", quartz: "±1.5–3 s/d" },
-  Critical: { mech: "beyond ±25 s/d", quartz: "beyond ±3 s/d" },
+  Good: { mech: "±6–12 s/d", quartz: "±0.3–0.7 s/d" },
+  Fair: { mech: "±12–20 s/d", quartz: "±0.7–1.5 s/d" },
+  Poor: { mech: "±20–40 s/d", quartz: "±1.5–3 s/d" },
+  Critical: { mech: "beyond ±40 s/d", quartz: "beyond ±3 s/d" },
 };
 
 const GRADE_MEANING: Record<AccuracyGrade, string> = {
   COSC: "Running inside chronometer specification — the standard a certified movement is tested to.",
   Excellent: "Keeping time better than most movements of its type. Nothing to act on.",
   "Very Good": "Comfortably accurate for everyday wear.",
-  Good: "Normal, usable accuracy — you'd notice roughly a minute's drift per month.",
+  Good: "Normal, usable accuracy — expect to reset it every week or two.",
   Fair: "Drifting more than ideal. A regulation would bring it back in line.",
   Poor: "Well outside normal for a healthy movement. Regulation is recommended.",
   Critical: "Far outside spec — often a sign of magnetization, a fault, or an overdue service.",

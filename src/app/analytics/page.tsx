@@ -141,8 +141,8 @@ export default function AnalyticsPage() {
             </ChartCard>
           </div>
           <div className="grid gap-4 lg:grid-cols-2">
-            <ChartCard title="Weekly variance" sub="s²/d — lower is more stable">
-              <PeriodBars data={data.weekly} dataKey="variance" name="Variance" unit=" s²/d"
+            <ChartCard title="Weekly variance" sub="(s/d)² — lower is more stable">
+              <PeriodBars data={data.weekly} dataKey="variance" name="Variance" unit=" (s/d)²"
                 color={watch.accentColor} height={220} />
             </ChartCard>
             <ChartCard title="Weekly σ" sub="standard deviation per week">

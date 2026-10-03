@@ -134,8 +134,8 @@ export default function ComparePage() {
         <ChartCard title="Daily accuracy" sub="7-day rolling rate, s/d — drag to zoom">
           <CompareChart data={chart} series={series} height={340} />
         </ChartCard>
-        <ChartCard title="Weekly variance" sub="s²/d per ISO week — lower is more stable">
-          <CompareChart data={weeklyVarianceChart} series={series} height={260} unit=" s²/d"
+        <ChartCard title="Weekly variance" sub="(s/d)² per ISO week — lower is more stable">
+          <CompareChart data={weeklyVarianceChart} series={series} height={260} unit=" (s/d)²"
             xFormatter={(v) => v} />
         </ChartCard>
       </div>

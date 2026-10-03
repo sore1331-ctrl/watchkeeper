@@ -87,9 +87,9 @@ export default function WatchesPage() {
           <StatCard label="Longest since service" value={name(agg.longestSinceService)}
             sub={`${agg.longestSinceService?.sinceService ?? "—"} days`} delay={0.25} className="[&>p:nth-child(2)]:text-base" />
           <StatCard label="Highest variance" value={name(agg.highVar)}
-            sub={`${agg.highVar?.stats.variance?.toFixed(1)} s²/d`} delay={0.3} className="[&>p:nth-child(2)]:text-base" />
+            sub={`${agg.highVar?.stats.variance?.toFixed(1)} (s/d)²`} delay={0.3} className="[&>p:nth-child(2)]:text-base" />
           <StatCard label="Lowest variance" value={name(agg.lowVar)}
-            sub={`${agg.lowVar?.stats.variance?.toFixed(2)} s²/d`} delay={0.35} className="[&>p:nth-child(2)]:text-base" />
+            sub={`${agg.lowVar?.stats.variance?.toFixed(2)} (s/d)²`} delay={0.35} className="[&>p:nth-child(2)]:text-base" />
           <StatCard label="Largest improvement" value={name(agg.improving)}
             sub="accuracy trend ↓" delay={0.4} className="[&>p:nth-child(2)]:text-base" />
           <StatCard label="Largest decline" value={name(agg.declining)}

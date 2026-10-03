@@ -213,7 +213,7 @@ export default function WatchDetailPage() {
           value={stats.adjustedStdDev != null ? `±${stats.adjustedStdDev.toFixed(2)}` : "—"}
           sub={stats.conditions?.reliable
             ? `within position · raw ±${stats.stdDev?.toFixed(2)}`
-            : `variance ${stats.variance?.toFixed(2) ?? "—"} s²/d`}
+            : `variance ${stats.variance?.toFixed(2) ?? "—"} (s/d)²`}
           delay={0.1} />
         <StatCard label="Consistency" value={stats.consistencyIndex != null ? `${stats.consistencyIndex}%` : "—"}
           sub="of readings behaving normally" delay={0.15} />
@@ -279,8 +279,8 @@ export default function WatchDetailPage() {
             <ChartCard title="Monthly averages">
               <PeriodBars data={data.monthly} color={watch.accentColor} height={200} />
             </ChartCard>
-            <ChartCard title="Variance by week" sub="s²/d">
-              <PeriodBars data={data.weekly} dataKey="variance" name="Variance" unit=" s²/d" color={watch.accentColor} height={200} />
+            <ChartCard title="Variance by week" sub="(s/d)²">
+              <PeriodBars data={data.weekly} dataKey="variance" name="Variance" unit=" (s/d)²" color={watch.accentColor} height={200} />
             </ChartCard>
             <ChartCard title="Wear frequency" sub="days worn by weekday">
               <WearFrequencyChart data={data.wearByDay} color={watch.accentColor} height={200} />

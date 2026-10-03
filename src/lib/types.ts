@@ -70,7 +70,7 @@ export interface Measurement extends Synced {
   watchId: string;
   /** ISO datetime the measurement was taken */
   measuredAt: string;
-  /** reference (atomic) time hh:mm:ss */
+  /** reference time hh:mm:ss — this device's clock unless another was typed in */
   referenceTime: string;
   /** what the watch displayed hh:mm:ss */
   watchTime: string;

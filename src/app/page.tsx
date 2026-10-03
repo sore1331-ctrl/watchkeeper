@@ -106,9 +106,9 @@ export default function DashboardPage() {
           sub={<HealthBadge label={health?.label ?? null} count={stats.gradableCount}
             reason={health?.reason} />} delay={0.15} />
         <StatCard label="Weekly variance" value={stats.weeklyVariance?.toFixed(2) ?? "—"}
-          sub="s²/d, last 7 days" delay={0.2} />
+          sub="(s/d)², last 7 days" delay={0.2} />
         <StatCard label="Monthly variance" value={stats.monthlyVariance?.toFixed(2) ?? "—"}
-          sub="s²/d, last 30 days" delay={0.25} />
+          sub="(s/d)², last 30 days" delay={0.25} />
         <StatCard label="Rolling 7-day" value={fmtSpd(stats.rolling7)} sub={asOf ?? "average rate"} delay={0.3} />
         <StatCard label="Rolling 30-day" value={fmtSpd(stats.rolling30)} sub={asOf ?? "average rate"} delay={0.35} />
         <StatCard label="Days since regulation" value={regDays ?? "—"}

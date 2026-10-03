@@ -206,8 +206,8 @@ function ReferenceClock({ onUse }: { onUse: (t: string) => void }) {
       <p className="text-[10px] uppercase tracking-wider text-muted">Reference clock — tap to use</p>
       <p className="font-mono text-2xl font-bold tabular-nums">{text}</p>
       <p className="mt-0.5 text-[10px] text-faint">
-        From this device, which syncs to a network time server. Check it against
-        time.is if you want to be certain.
+        This device&apos;s own clock. It is usually within a second of true time but
+        is not checked — compare it with time.is if the last second matters.
       </p>
     </button>
   );

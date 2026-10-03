@@ -177,8 +177,9 @@ export default function AccountPage() {
           {sync.status === "synced" && (
             <p className="mt-4 flex items-center gap-2 rounded-lg bg-positive/10 px-3 py-2 text-xs text-positive">
               <Check className="h-3.5 w-3.5" />
-              This device and your account hold the same data. Open the same address on
-              your phone and sign in to see it there.
+              {demo
+                ? "Signed in. This device is showing the sample collection, which is not uploaded — add a watch or a reading and your own data will sync."
+                : "This device and your account hold the same data. Open the same address on your phone and sign in to see it there."}
             </p>
           )}
           {sync.status === "error" && (
