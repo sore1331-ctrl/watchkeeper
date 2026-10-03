@@ -193,16 +193,24 @@ export const IMPLAUSIBLE_SPD = 300;
 
 /**
  * How precisely a single dial reading can be taken, in seconds. Reading a
- * seconds hand against a clock is good to roughly half a second; two readings
- * make an interval, so their errors combine.
+ * seconds hand against a clock is good to roughly half a second.
  */
 export const READING_ERROR_S = 0.5;
-const INTERVAL_ERROR_S = READING_ERROR_S * Math.SQRT2;
+/**
+ * How far the reference itself may have moved between readings. The reference
+ * is the device's clock, which is not checked against anything: a steady
+ * offset cancels out of a rate, but the clock drifts and is re-synced between
+ * readings, and half a second of that is ordinary. This is an assumption, not
+ * a measurement.
+ */
+export const REFERENCE_ERROR_S = 0.5;
+// Each reading carries both errors; two readings make an interval.
+const INTERVAL_ERROR_S = Math.hypot(READING_ERROR_S, REFERENCE_ERROR_S) * Math.SQRT2;
 
 /**
- * Uncertainty in a rate, in s/d, from reading error alone.
+ * Uncertainty in a rate, in s/d, from reading and reference error.
  *
- * The same half-second of imprecision becomes ±1.2 s/d over a fourteen-hour
+ * The same second of imprecision across an interval becomes ±1.7 s/d over a fourteen-hour
  * gap and ±0.14 s/d over a week — which is why a chart of overnight readings
  * looks so much jumpier than one built from weekly checks, with no change in
  * the watch whatsoever.
