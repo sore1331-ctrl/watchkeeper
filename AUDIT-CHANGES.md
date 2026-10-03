@@ -90,6 +90,16 @@ Rows 42–44 share commit `62f8132`; undoing one on its own is a manual job.
 | 46 | `061cf3b` | Installable app: PNG, maskable and Apple icons; a service worker caching the app's own files (build assets cache-first, pages network-first with the last copy as fallback). Production only | So it can be added to a phone's home screen and opened without a connection | Tested on a production build: worker active, pages and 28 assets cached, icons served. Not installed on a real phone; offline not simulated |
 | 47 | `efad410` | Settings has a "Light theme accent" choice: Navy ink (default) or Racing green. Saved on the device and applied before first paint; the dark theme keeps brass | You asked to be able to switch between the two | Tested: both colours apply, survive a reload, and dark is unaffected |
 
+## Checked reference time — branch `checked-time`, not yet on `main`
+
+**Needs migration `0010` applied before it is merged**: the app sends a new
+`reference_checked` column with every measurement, and without the column
+measurement sync fails.
+
+| # | Commit | Change | Why | Checked |
+|---|--------|--------|-----|---------|
+| 48 | `393a871` | Opening the measurement dialog checks the device clock against the server and shows the result ("0.8 s slow", or "right to within 50 ms"). The reference clock, the Now stamp and tap-to-capture are corrected by it. Offline, it says so and uses the device clock as before. Readings taken with a checked clock are flagged and counted as having 0.1 s of reference error instead of the assumed 0.5 s; the CSV export has the flag | Every offset is measured against the device clock, which nothing checked | Tested with a simulated 0.8 s clock error: detected, the tap was corrected by it, the reading saved as checked, and the offline message appears when the check fails. Uncertainty on a 10-day test set falls from ±0.32 to ±0.23 s/d. On a real host the server and device are different machines; here they were the same one, so a true error was not observed |
+
 ## Decided on 2026-10-03
 
 - **Migrations `0007`, `0008`, `0009` applied** to the live database and
