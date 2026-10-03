@@ -119,14 +119,36 @@ L888, ETA 7750 / Sellita SW500, and all quartz except Grand Seiko 9F.
 |---|--------|--------|-----|---------|
 | 52 | `b1b3b5a` | Citizen goes from 3 models to 18: four Attesa, six Promaster, three Series 8, Tsuyosa, Eco-Drive One and three The Citizen. Citizen tolerances added: 90xx automatics −10/+20, Caliber 0950 −5/+10, Caliber 0200 −3/+5, Satellite Wave F9xx ±5 s/month, Eco-Drive and radio-controlled quartz ±15 s/month, A060 ±5 s/year, Caliber 0100 ±1 s/year | The Attesa line was missing and Citizen quartz had no tolerance | References, calibers and tolerances looked up. Two things are not verified: the U680 (Navihawk) is assumed to share the standard ±15 s/month, and the H800 Attesa entry has no reference number. All 18 entries and 8 typed inputs tested |
 
+## Catalog rebuilt around movements — branch `catalog-movements` (includes `citizen-catalog`), not yet on `main`
+
+| # | Commit | Change | Why | Checked |
+|---|--------|--------|-----|---------|
+| 53 | `c575ef6` | The catalog is now a table of 140 movements plus 241 models across 48 brands that point at them. A movement's beat rate and power reserve are stated once and inherited by every model using it. A figure is only given when it was looked up; unchecked movements are listed by name and type alone. Jewel counts are no longer supplied. Reference numbers are kept only where looked up (Citizen). Orient, Vostok, Bell & Ross, Seagull and Timex added | The catalog mixed looked-up and remembered figures with no way to tell them apart, and two "confident" jewel counts turned out to disagree with published sources | All 241 models resolve to a movement; 26 typed inputs tested |
+| 54 | `c575ef6` | Typing a known caliber in the watch form names the movement and fills in its beat rate and power reserve. A bare caliber ("9015", "2824", "SW200") resolves to the full movement for its tolerance | Movement recognition only worked through the model list | Tested in the browser: "ETA 2824-2" on a Hamilton filled 28,800 and 38 h and showed the ±12 tolerance |
+| 55 | `c575ef6` | Tolerances added: Seiko 6L −10/+15, Seiko solar V157/V158 ±15 s/month, Casio module 3229 ±15 s/month, the wider Miyota 8xxx family. Powermatic 80 figure limited to the three versions Tissot's statement covers | Common movements still on the generic scale | Each figure looked up |
+
 ## Catalog verification status
 
-Looked up: Citizen (all 18 models), the movement tolerances in rows 50 and
-52, and three corrected entries (Lange L093.1, IWC 82100, Hangzhou 5000A).
+**Movements: 99 of 140 have figures that were looked up.** The other 41 are
+listed by name and type only, with no numbers: mostly high-end in-house
+calibers (Patek, AP, Lange, Vacheron, JLC, Cartier, Panerai, Blancpain,
+Glashütte Original, Ulysse Nardin) and a few others (Nomos DUW 3001, Omega
+9900/2500/3220, Tudor MT5612/MT5652, Seiko 7S26/4R34/NH34, ETA 2836-2/2801-2).
 
-From memory, not looked up: the other 156 models — the original 129 and the
-27 added in row 51. Their tolerances come from the movement patterns, which
-were looked up; their references, jewel counts and power reserves were not.
+**Tolerances: 138 of 241 models have one.** Every tolerance was looked up.
+Models without one are on makers that publish none (IWC, JLC, Zenith, Cartier,
+Nomos, Hamilton, Longines' non-chronometer calibers, the high-end houses), or
+that I did not verify (Vostok, Mido Caliber 80, ETA 7750 / Sellita SW500).
+
+**Which movement a model uses** is from general knowledge of the current
+reference, not looked up model by model, except for Citizen.
+
+**Reference numbers** are given only for Citizen, where each was looked up.
+The reference numbers the old catalog carried for other brands were from
+memory and have been removed.
+
+**Jewel counts** are not supplied. While checking, two counts I had stated
+confidently (Rolex 4131, Omega 3861) disagreed between published sources.
 
 ## Decided on 2026-10-03
 
