@@ -266,7 +266,8 @@ export function generateDemoMeasurements(now = new Date()): Measurement[] {
         notes:
           i === resetAt ? "Was over a minute fast — reset the hands to reference." :
           i % 23 === 0 && i > 0 ? "Synced against NTP pool before measuring." :
-          i % 17 === 0 && i > 0 ? "Left on winder overnight." : undefined,
+          // only an automatic goes on a winder
+          watch.movementType === "automatic" && i % 17 === 0 && i > 0 ? "Left on winder overnight." : undefined,
       });
     });
   }

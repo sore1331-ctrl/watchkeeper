@@ -36,6 +36,8 @@ const CALIBER_SPECS: { match: RegExp; brands?: string[]; spec: RateSpec }[] = [
   { match: /^(31\d\d|32\d\d|41\d\d|21\d\d)$/i, brands: ["rolex"], spec: { min: -2, max: 2, source: "Rolex Superlative Chronometer" } },
   // Omega — METAS Master Chronometer
   { match: /^(88\d\d|89\d\d|3861)$/i, brands: ["omega"], spec: { min: 0, max: 5, source: "METAS Master Chronometer" } },
+  // Tudor Master Chronometer ("-U" calibers) — METAS, tighter than plain COSC
+  { match: /^MT\d{4}.*U$/i, brands: ["tudor"], spec: { min: 0, max: 5, source: "Tudor Master Chronometer (METAS)" } },
   // Tudor Manufacture
   { match: /^MT\d{4}/i, brands: ["tudor"], spec: { min: -2, max: 4, source: "Tudor Manufacture (COSC)" } },
   // Grand Seiko 9F quartz — ±10 s/year
