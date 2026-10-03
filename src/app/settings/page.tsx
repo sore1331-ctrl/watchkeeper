@@ -96,9 +96,12 @@ export default function SettingsPage() {
         <div className="flex items-center gap-3 text-sm">
           <Database className="h-4 w-4 text-muted" />
           <div>
-            <p className="font-medium">Privacy-first local mode</p>
+            <p className="font-medium">{cloudSynced ? "Stored on this device" : "Privacy-first local mode"}</p>
             <p className="text-xs text-muted">
-              All data lives in this browser (localStorage). {demo ? "Currently showing demo data." : "Tracking your own data."}
+              {cloudSynced
+                ? "Your data is kept in this browser (localStorage) and copied to your account."
+                : "All data lives in this browser (localStorage)."}{" "}
+              {demo ? "Currently showing demo data." : "Tracking your own data."}
             </p>
           </div>
         </div>
