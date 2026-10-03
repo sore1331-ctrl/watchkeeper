@@ -234,6 +234,31 @@ export async function pullAll(): Promise<CloudSnapshot | null> {
   };
 }
 
+// ── settings ────────────────────────────────────────────────────────────────
+// One row per user. The app's settings and snoozed notifications travel as a
+// single JSON document (column added in migration 0008), newest wins.
+
+export interface CloudSettings {
+  data: Record<string, unknown>;
+  updatedAt: string;
+}
+
+export async function pullSettings(): Promise<CloudSettings | null> {
+  const ctx = await withUser();
+  if (!ctx) return null;
+  const { data, error } = await ctx.sb
+    .from("wk_settings").select("data, updated_at").maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data) return null;
+  return { data: (data.data ?? {}) as Record<string, unknown>, updatedAt: data.updated_at };
+}
+
+export async function pushSettings(data: Record<string, unknown>, updatedAt: string) {
+  const ctx = await withUser();
+  if (!ctx) return;
+  check(await ctx.sb.from("wk_settings").upsert({ user_id: ctx.userId, data, updated_at: updatedAt }));
+}
+
 export type DeleteTable = "watches" | "measurements" | "services" | "wishlist";
 
 /** A deletion made on this device that the cloud has not yet confirmed. */

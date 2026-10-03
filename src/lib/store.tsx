@@ -59,6 +59,8 @@ interface PersistedState {
    * sync and would simply be merged back in.
    */
   pendingDeletes?: repo.PendingDelete[];
+  /** when settings or snoozes last changed here — they sync newest-wins */
+  settingsUpdatedAt?: string;
   lastSyncedAt?: string;
 }
 
@@ -351,6 +353,40 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     if (!sess.session) return;
 
     const userId = sess.session.user.id;
+
+    // Settings and snoozed notifications ride along, newest wins. Best-effort:
+    // they must never stop the collection itself from syncing.
+    const syncSettings = async () => {
+      try {
+        const remote = await repo.pullSettings();
+        const localAt = current.settingsUpdatedAt ? +new Date(current.settingsUpdatedAt) : 0;
+        const remoteAt = remote ? +new Date(remote.updatedAt) : 0;
+        if (remote && remoteAt > localAt) {
+          const data = remote.data as { settings?: Partial<AppSettings>; dismissed?: Dismissal[] };
+          mutate((st) =>
+            // changed here while the sync ran — that is newer still
+            st.settingsUpdatedAt !== current.settingsUpdatedAt
+              ? st
+              : {
+                  ...st,
+                  settings: { ...st.settings, ...data.settings },
+                  dismissedNotifications: Array.isArray(data.dismissed)
+                    ? data.dismissed
+                    : st.dismissedNotifications,
+                  settingsUpdatedAt: remote.updatedAt,
+                }
+          );
+        } else if (current.settingsUpdatedAt && localAt > remoteAt) {
+          await repo.pushSettings(
+            { settings: current.settings, dismissed: current.dismissedNotifications },
+            current.settingsUpdatedAt
+          );
+        }
+      } catch {
+        /* e.g. the column from migration 0008 is not there yet */
+      }
+    };
+
     syncing.current = true;
     setSync({ status: "syncing" });
     try {
@@ -394,6 +430,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           pendingDeletes: stillPending(st),
           lastSyncedAt: new Date().toISOString(),
         }));
+        await syncSettings();
         setSync({ status: "synced", at: new Date().toISOString() });
         return;
       }
@@ -469,6 +506,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           lastSyncedAt: at,
         };
       });
+      await syncSettings();
       setSync({ status: "synced", at });
     } catch (e) {
       setSync({ status: "error", message: e instanceof Error ? e.message : "Sync failed" });
@@ -704,7 +742,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       },
       updateSettings: (patch) => {
         mutate((st) => {
-          const next = { ...st, settings: { ...st.settings, ...patch } };
+          const next = {
+            ...st,
+            settings: { ...st.settings, ...patch },
+            settingsUpdatedAt: new Date().toISOString(),
+          };
           // Changing the collection currency re-labels the watches that were
           // still on the previous default. Amounts are never converted — the
           // figure you typed stays the figure you typed.
@@ -727,6 +769,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
             ...st.dismissedNotifications.filter((d) => d.key !== key),
             { key, at: new Date().toISOString() },
           ],
+          settingsUpdatedAt: new Date().toISOString(),
         }));
       },
       resetDemoData: () => setState(freshDemoState()),
