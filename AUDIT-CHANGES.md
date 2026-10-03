@@ -98,6 +98,21 @@ Migration `0010` was applied to the live database first and verified.
 |---|--------|--------|-----|---------|
 | 48 | `393a871` | Opening the measurement dialog checks the device clock against the server and shows the result ("0.8 s slow", or "right to within 50 ms"). The reference clock, the Now stamp and tap-to-capture are corrected by it. Offline, it says so and uses the device clock as before. Readings taken with a checked clock are flagged and counted as having 0.1 s of reference error instead of the assumed 0.5 s; the CSV export has the flag | Every offset is measured against the device clock, which nothing checked | Tested with a simulated 0.8 s clock error: detected, the tap was corrected by it, the reading saved as checked, and the offline message appears when the check fails. Uncertainty on a 10-day test set falls from ±0.32 to ±0.23 s/d. On a real host the server and device are different machines; here they were the same one, so a true error was not observed |
 
+## Movement matching and catalog — branch `catalog-matching`, not yet on `main`
+
+All three rows share commit `ffce757`. **Row 49 and 50 change the tolerance, and so the grade and health score, of affected watches.**
+
+| # | Change | Why | Checked |
+|---|--------|-----|---------|
+| 49 | Matching logic. A typed caliber is no longer overridden by the catalog model's. Certified watches with no caliber typed use the model lookup. "Cal.", "Calibre" and a repeated brand name are ignored; "Seiko NH35A" and "TMI NH35" match. A partial model name is used only when every candidate agrees on the tolerance; fragments under three characters match nothing. Nicknames (BB58, Speedy, SMP, MM300 and others) are recognised and suggested | A Speedmaster with an 1861 was graded on the 3861's 0/+5; a COSC Rolex with no caliber got −4/+6 instead of −2/+2; "Cal. 3235" was not recognised | Tested on 45 typed inputs |
+| 50 | Tolerances added: ETA 2824/2892 and Sellita SW2xx/SW3xx at standard grade ±12 s/d; Powermatic 80 −4/+10; Oris Calibre 400 series −3/+5; Seiko 8L −10/+15; Orient F6 −15/+25; Citizen 82xx −20/+40; Swatch Sistem51 −5/+15; Rolex 9001/9002. Catalog models with their own tolerance: 40 → 76 | The most common movements fell to the generic scale | Each figure looked up; see sources in the conversation. ETA/Sellita are sold in grades and the standard (widest) is assumed |
+| 51 | Models added for the 12 brands that had none (27 models; catalog 132 → 159). Lange L093.1 jewels 28 → 21, IWC 82100 jewels 31 → 22, Hangzhou 5000A 21,600 → 28,800 vph and 42 h | Those brands only completed the name; three entries were wrong | The three corrections were looked up. **The 27 new models' specs are from memory, not looked up**; uncertain fields were left blank rather than guessed |
+
+Still on the generic scale because the maker publishes no tolerance, or I did
+not verify one: Nomos, IWC, JLC, Zenith, Cartier, Panerai, Patek, AP, Lange,
+Vacheron, Glashütte Original, Hamilton H-10/H-50, Mido Caliber 80, Longines
+L888, ETA 7750 / Sellita SW500, and all quartz except Grand Seiko 9F.
+
 ## Decided on 2026-10-03
 
 - **Migrations `0007`, `0008`, `0009` applied** to the live database and
