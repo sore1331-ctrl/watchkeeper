@@ -108,14 +108,16 @@ export function accuracyGrade(
   return "Critical";
 }
 
+// Theme variables (see globals.css), not fixed hexes: the pastel that reads
+// on a dark surface is invisible on a white one.
 export const GRADE_COLORS: Record<AccuracyGrade, string> = {
-  COSC: "#c9a227",
-  Excellent: "#34d399",
-  "Very Good": "#6ee7b7",
-  Good: "#60a5fa",
-  Fair: "#fbbf24",
-  Poor: "#fb923c",
-  Critical: "#f87171",
+  COSC: "var(--grade-cosc)",
+  Excellent: "var(--grade-excellent)",
+  "Very Good": "var(--grade-very-good)",
+  Good: "var(--grade-good)",
+  Fair: "var(--grade-fair)",
+  Poor: "var(--grade-poor)",
+  Critical: "var(--grade-critical)",
 };
 
 /**
@@ -397,12 +399,12 @@ export function healthScore(
 }
 
 export const HEALTH_COLORS: Record<HealthLabel, string> = {
-  Excellent: "#34d399",
-  "Very Good": "#6ee7b7",
-  Good: "#60a5fa",
+  Excellent: "var(--grade-excellent)",
+  "Very Good": "var(--grade-very-good)",
+  Good: "var(--grade-good)",
   // Amber, not red: both are routine maintenance, not emergencies.
-  "Regulation due": "#fbbf24",
-  "Service due": "#fbbf24",
+  "Regulation due": "var(--grade-fair)",
+  "Service due": "var(--grade-fair)",
 };
 
 const HEALTH_MEANING: Record<HealthLabel, string> = {

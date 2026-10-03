@@ -111,7 +111,7 @@ export default function WatchDetailPage() {
               } />
             )}
             {watch.coscCertified && (
-              <Badge color="#c9a227"><ShieldCheck className="h-3 w-3" /> COSC certified</Badge>
+              <Badge color="var(--grade-cosc)"><ShieldCheck className="h-3 w-3" /> COSC certified</Badge>
             )}
             {anomaly?.drifting && <Badge color="var(--critical)">Drifting</Badge>}
           </div>
