@@ -184,6 +184,16 @@ export function lastRegulationDate(services: ServiceRecord[]): string | null {
   return regs.map((s) => s.date).sort().at(-1)!;
 }
 
+/**
+ * Years between services. One figure for the whole app: the health score,
+ * the next-service estimate and the reminders must agree on when a watch is
+ * due. Mechanical uses the interval chosen in Settings; quartz has no oils
+ * under load and goes longer.
+ */
+export function serviceIntervalYears(watch: Watch, mechanicalYears = 5): number {
+  return watch.movementType === "quartz" ? 8 : mechanicalYears;
+}
+
 export function daysSince(iso: string | null): number | null {
   if (!iso) return null;
   return Math.floor((Date.now() - +new Date(iso)) / DAY_MS);
@@ -225,7 +235,9 @@ export function stabilityScoreFor(sd: number, spec: RateSpec | null): number {
 export function healthScore(
   watch: Watch,
   stats: WatchStats,
-  services: ServiceRecord[]
+  services: ServiceRecord[],
+  /** service interval for mechanical movements, from Settings */
+  mechanicalIntervalYears = 5
 ): HealthResult | null {
   if (stats.avgSpd == null) return null;
   // gate on readings that actually contributed a rate, not raw entries
@@ -277,7 +289,7 @@ export function healthScore(
   // the score as far.
   const realService = lastServiceDate(services);
   const sinceService = daysSince(realService ?? watch.purchaseDate ?? null);
-  const intervalYears = watch.movementType === "quartz" ? 8 : 7;
+  const intervalYears = serviceIntervalYears(watch, mechanicalIntervalYears);
   const intervalDays = 365 * intervalYears;
   let serviceAge = 50; // nothing recorded — mildly pessimistic, not damning
   if (sinceService != null) {
@@ -417,10 +429,12 @@ export function healthExplanation(label: HealthLabel, hasSpec = true): string {
 }
 
 /** Estimate next service date from last major service + interval. */
-export function nextServiceEstimate(watch: Watch, services: ServiceRecord[]): string | null {
+export function nextServiceEstimate(
+  watch: Watch, services: ServiceRecord[], mechanicalIntervalYears = 5
+): string | null {
   const last = lastServiceDate(services) ?? watch.purchaseDate;
   if (!last) return null;
-  const years = watch.movementType === "quartz" ? 8 : 5;
+  const years = serviceIntervalYears(watch, mechanicalIntervalYears);
   const d = new Date(last);
   d.setFullYear(d.getFullYear() + years);
   return d.toISOString().slice(0, 10);

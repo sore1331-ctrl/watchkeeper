@@ -95,8 +95,8 @@ export default function ReportsPage() {
     if (!suggestions.length) suggestions.push("Performance is healthy — keep the current routine.");
 
     return { ms, stats, services, health, grade, spec, weekly, monthly, suggestions,
-      nextService: nextServiceEstimate(watch, services) };
-  }, [watch, measurementsFor, servicesFor, analysisFor]);
+      nextService: nextServiceEstimate(watch, services, store.settings.serviceIntervalYears) };
+  }, [watch, measurementsFor, servicesFor, analysisFor, store.settings.serviceIntervalYears]);
 
   if (!ready || !watch || !report) return <Skeleton className="h-96" />;
 

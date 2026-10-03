@@ -94,7 +94,7 @@ export default function WatchDetailPage() {
 
   const { stats, services, health, grade, anomaly, spec } = data;
   const batt = batteryRemaining(watch);
-  const nextSvc = nextServiceEstimate(watch, services);
+  const nextSvc = nextServiceEstimate(watch, services, store.settings.serviceIntervalYears);
   const watchInsights = insights.filter((i) => i.watchId === watch.id);
 
   return (

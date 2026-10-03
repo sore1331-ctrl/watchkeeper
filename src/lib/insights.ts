@@ -2,7 +2,7 @@
 
 import type { Insight, Measurement, Notification, RestingHandling, Watch, ServiceRecord } from "./types";
 import { analyzeConditions, computeStats, detectAnomaly, mean, stdDev, type WatchStats } from "./stats";
-import { accuracyGrade, batteryRemaining, daysSince, expectedScatter, healthScore, lastRegulationDate, MIN_MEASUREMENTS_FOR_GRADE, nextServiceEstimate, rateSpecFor } from "./grades";
+import { accuracyGrade, batteryRemaining, daysSince, expectedScatter, healthScore, lastRegulationDate, lastServiceDate, MIN_MEASUREMENTS_FOR_GRADE, nextServiceEstimate, rateSpecFor } from "./grades";
 
 const DAY_MS = 86_400_000;
 let seq = 0;
@@ -214,7 +214,8 @@ export function generateNotifications(
   measurementsByWatch: Map<string, Measurement[]>,
   servicesByWatch: Map<string, ServiceRecord[]>,
   reminderDays = 3,
-  restingReadings: RestingHandling = "separate"
+  restingReadings: RestingHandling = "separate",
+  serviceIntervalYears = 5
 ): Notification[] {
   const out: Notification[] = [];
   let n = 0;
@@ -258,14 +259,26 @@ export function generateNotifications(
         body: `${name}'s weekly variance (${stats.weeklyVariance.toFixed(1)}) is well above its monthly norm (${stats.monthlyVariance.toFixed(1)}).`,
       });
 
-    const next = nextServiceEstimate(w, svcs);
-    if (next && +new Date(next) - Date.now() < 90 * DAY_MS)
-      push({
-        watchId: w.id, kind: "service-due",
-        severity: +new Date(next) < Date.now() ? "critical" : "warning",
-        title: +new Date(next) < Date.now() ? "Service overdue" : "Service due soon",
-        body: `${name} is ${+new Date(next) < Date.now() ? "past" : "approaching"} its estimated service date (${next}).`,
-      });
+    const next = nextServiceEstimate(w, svcs, serviceIntervalYears);
+    if (next && +new Date(next) - Date.now() < 90 * DAY_MS) {
+      const past = +new Date(next) < Date.now();
+      // "Overdue" is only claimed against a real service record — the same
+      // rule the health verdict uses. A purchase date says nothing about work
+      // done before you owned the watch, so that case is a prompt, not an alarm.
+      if (lastServiceDate(svcs))
+        push({
+          watchId: w.id, kind: "service-due",
+          severity: past ? "critical" : "warning",
+          title: past ? "Service overdue" : "Service due soon",
+          body: `${name} is ${past ? "past" : "approaching"} its estimated service date (${next}).`,
+        });
+      else if (past)
+        push({
+          watchId: w.id, kind: "service-due", severity: "info",
+          title: "No service on record",
+          body: `${name} was bought ${Math.floor((daysSince(w.purchaseDate ?? null) ?? 0) / 365)} years ago and has no service logged. Log one if it has been serviced.`,
+        });
+    }
 
     const batt = batteryRemaining(w);
     if (batt != null && batt < 0.15)

@@ -30,7 +30,7 @@ export function analyzeWatch(
   watch: Watch,
   measurements: Measurement[],
   services: ServiceRecord[],
-  settings: Pick<AppSettings, "restingReadings">
+  settings: Pick<AppSettings, "restingReadings" | "serviceIntervalYears">
 ): WatchAnalysis {
   const stats = computeStats(measurements, {
     powerReserveHours: watch.powerReserveHours,
@@ -48,7 +48,7 @@ export function analyzeWatch(
       stats.gradableCount,
       spec
     ),
-    health: healthScore(watch, stats, services),
+    health: healthScore(watch, stats, services, settings.serviceIntervalYears),
     // judged on the same readings the headline figures use, so a change of
     // resting habit can never read as the movement drifting
     anomaly: detectAnomaly(stats.headlineSamples),

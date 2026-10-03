@@ -513,7 +513,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     const notifications = state
       ? generateNotifications(
           s.watches, byWatch, svcByWatch,
-          s.settings.measurementReminderDays, s.settings.restingReadings
+          s.settings.measurementReminderDays, s.settings.restingReadings,
+          s.settings.serviceIntervalYears
         )
           .filter((n) => {
             const snoozed = s.dismissedNotifications.find(

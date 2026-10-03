@@ -21,12 +21,13 @@ export default function ServicesPage() {
       active
         .map((w) => ({
           watch: w,
-          next: nextServiceEstimate(w, servicesFor(w.id)),
+          next: nextServiceEstimate(w, servicesFor(w.id), settings.serviceIntervalYears),
+          hasRecord: lastServiceDate(servicesFor(w.id)) != null,
           sinceDays: daysSince(lastServiceDate(servicesFor(w.id)) ?? w.purchaseDate ?? null),
         }))
         .filter((x) => x.next)
         .sort((a, b) => a.next!.localeCompare(b.next!)),
-    [active, servicesFor]
+    [active, servicesFor, settings.serviceIntervalYears]
   );
 
   if (!ready) return <Skeleton className="h-96" />;
@@ -56,7 +57,7 @@ export default function ServicesPage() {
 
       <SectionTitle>Upcoming service estimates</SectionTitle>
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-        {upcoming.map(({ watch: w, next, sinceDays }) => {
+        {upcoming.map(({ watch: w, next, sinceDays, hasRecord }) => {
           const overdue = +new Date(next!) < Date.now();
           const soon = +new Date(next!) - Date.now() < 90 * 86_400_000;
           return (
@@ -65,15 +66,16 @@ export default function ServicesPage() {
                 <Link href={`/watches/${w.id}`} className="text-sm font-semibold hover:text-accent">
                   {w.brand} {w.model}
                 </Link>
-                <Badge color={overdue ? "var(--critical)" : soon ? "var(--warning)" : "var(--positive)"}>
-                  {overdue ? "Overdue" : soon ? "Due soon" : "OK"}
+                {/* overdue is only claimed against a real service record */}
+                <Badge color={overdue ? (hasRecord ? "var(--critical)" : "var(--info)") : soon ? "var(--warning)" : "var(--positive)"}>
+                  {overdue ? (hasRecord ? "Overdue" : "No service on record") : soon ? "Due soon" : "OK"}
                 </Badge>
               </div>
               <p className="mt-2 text-xs text-muted">
                 Estimated next service <span className="font-semibold text-foreground">{fmtDate(next)}</span>
               </p>
               {sinceDays != null && (
-                <p className="text-xs text-muted">{sinceDays} days since last major service / purchase</p>
+                <p className="text-xs text-muted">{sinceDays} days since {hasRecord ? "last major service" : "purchase"}</p>
               )}
             </Card>
           );

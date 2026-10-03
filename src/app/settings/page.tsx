@@ -90,6 +90,22 @@ export default function SettingsPage() {
             />
           </div>
         </div>
+        <div>
+          <Label>Service interval for mechanical watches (years)</Label>
+          <Input
+            type="number" min={2} max={15}
+            value={settings.serviceIntervalYears}
+            onChange={(e) =>
+              updateSettings({
+                serviceIntervalYears: Math.max(2, Math.min(15, +e.target.value || 5)),
+              })
+            }
+          />
+          <p className="mt-1 text-[11px] text-faint">
+            Used everywhere a service date is estimated: the health score, the next-service
+            date and the reminders. Quartz watches use 8 years.
+          </p>
+        </div>
       </Card>
 
       <SectionTitle>Data</SectionTitle>
