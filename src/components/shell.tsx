@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Bell, ChartSpline, Cloud, CloudOff, FileText, GitCompareArrows, Heart, LayoutDashboard,
-  Lightbulb, Moon, RefreshCw, Settings, Sun, UserRound, Watch as WatchIcon, Wrench, X,
+  Lightbulb, Menu, Moon, RefreshCw, Settings, Sun, UserRound, Watch as WatchIcon, Wrench, X,
 } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { cn } from "@/lib/utils";
@@ -104,6 +104,10 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const { dark, toggle } = useTheme();
   const { notifications, demo, cloudSynced, ready, sync, user, saveFailed } = useStore();
   const [showNotifs, setShowNotifs] = useState(false);
+  // the pages that don't fit in the mobile bottom bar live behind "More"
+  const [showMore, setShowMore] = useState(false);
+  const moreNav = NAV.filter((n) => !n.mobile);
+  const moreActive = moreNav.some((n) => pathname.startsWith(n.href));
 
   return (
     <div className="relative z-10 flex min-h-screen">
@@ -215,6 +219,36 @@ export function Shell({ children }: { children: React.ReactNode }) {
           {children}
         </main>
 
+        {/* "More" sheet — mobile */}
+        {showMore && (
+          <>
+            <button
+              aria-label="Close menu"
+              className="fixed inset-0 z-30 cursor-default bg-background/60 md:hidden"
+              onClick={() => setShowMore(false)}
+            />
+            <nav
+              id="more-nav"
+              className="glass fixed inset-x-2 bottom-16 z-40 grid grid-cols-2 gap-1 rounded-2xl p-2 shadow-2xl md:hidden"
+            >
+              {moreNav.map(({ href, label, icon: Icon }) => (
+                <Link
+                  key={href}
+                  href={href}
+                  onClick={() => setShowMore(false)}
+                  className={cn(
+                    "flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium",
+                    pathname.startsWith(href) ? "bg-accent/12 text-accent" : "text-foreground hover:bg-surface-2"
+                  )}
+                >
+                  <Icon className="h-5 w-5" />
+                  {label}
+                </Link>
+              ))}
+            </nav>
+          </>
+        )}
+
         {/* Bottom nav — mobile */}
         <nav className="glass fixed inset-x-0 bottom-0 z-40 flex justify-around border-t border-border-token py-1.5 md:hidden">
           {NAV.filter((n) => n.mobile).map(({ href, label, icon: Icon }) => {
@@ -223,8 +257,9 @@ export function Shell({ children }: { children: React.ReactNode }) {
               <Link
                 key={href}
                 href={href}
+                onClick={() => setShowMore(false)}
                 className={cn(
-                  "flex flex-col items-center gap-0.5 rounded-lg px-3 py-1 text-[10px] font-medium",
+                  "flex min-h-11 min-w-11 flex-col items-center justify-center gap-0.5 rounded-lg px-1.5 py-1 text-[11px] font-medium",
                   active ? "text-accent" : "text-muted"
                 )}
               >
@@ -233,6 +268,18 @@ export function Shell({ children }: { children: React.ReactNode }) {
               </Link>
             );
           })}
+          <button
+            onClick={() => setShowMore((s) => !s)}
+            aria-expanded={showMore}
+            aria-controls="more-nav"
+            className={cn(
+              "flex min-h-11 min-w-11 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-lg px-1.5 py-1 text-[11px] font-medium",
+              showMore || moreActive ? "text-accent" : "text-muted"
+            )}
+          >
+            <Menu className="h-5 w-5" />
+            More
+          </button>
         </nav>
       </div>
     </div>
