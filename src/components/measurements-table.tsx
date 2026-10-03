@@ -42,7 +42,8 @@ export function csvField(v: unknown): string {
 }
 
 export function exportMeasurementsCsv(watch: Watch, ms: Measurement[]) {
-  const samples = rateSamples(ms);
+  // same exclusions as the on-screen analysis, so the file and the app agree
+  const samples = rateSamples(ms, watch.powerReserveHours);
   const spdByDate = new Map(samples.map((s) => [s.date, s.spd]));
   const header = "date,reference_time,watch_time,offset_s,rate_spd,temperature_c,position,power_reserve_pct,worn,time_corrected,excluded,notes";
   const rows = ms.map((m) =>

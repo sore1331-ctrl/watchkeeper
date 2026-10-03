@@ -80,8 +80,12 @@ export function accuracyGrade(
   if (avgSpd == null) return null;
   if (measurementCount != null && measurementCount < MIN_MEASUREMENTS_FOR_GRADE) return null;
 
-  // A certified chronometer inside its band earns the COSC badge outright.
-  if (cosc && avgSpd >= -4 && avgSpd <= 6) return "COSC";
+  // A certified chronometer inside its band earns the COSC badge — unless the
+  // maker holds it to something tighter and it is outside that. A Rolex at
+  // +5 s/d is inside COSC but outside its own −2/+2, and the health verdict
+  // says "regulation due"; the grade must not contradict it with a gold badge.
+  const inOwnSpec = !spec || (avgSpd >= spec.min && avgSpd <= spec.max);
+  if (cosc && avgSpd >= -4 && avgSpd <= 6 && inOwnSpec) return "COSC";
   if (spec) return gradeAgainstSpec(avgSpd, spec);
 
   const a = Math.abs(avgSpd);

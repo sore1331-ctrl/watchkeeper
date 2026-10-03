@@ -101,6 +101,8 @@ export default function ReportsPage() {
   if (!ready || !watch || !report) return <Skeleton className="h-96" />;
 
   const { stats, weekly, monthly, health, grade } = report;
+  // the same spec-relative stability the health score is built from
+  const stability = health?.components.find((c) => c.name === "Stability")?.score ?? null;
   const fmtDay = (iso: string) =>
     new Date(iso).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
 
@@ -198,7 +200,7 @@ export default function ReportsPage() {
                 <StatCard label="Largest deviation" value={fmtSpd(weekly.largestDev.spd)}
                   sub={fmtDay(weekly.largestDev.date)} delay={0.15} />
                 <StatCard label="Variance" value={weekly.variance.toFixed(2)} sub="s²/d" delay={0.2} />
-                <StatCard label="Stability score" value={stats.stabilityScore != null ? Math.round(stats.stabilityScore) : "—"}
+                <StatCard label="Stability score" value={stability != null ? Math.round(stability) : "—"}
                   sub="/ 100" delay={0.25} />
               </div>
               <SectionTitle>Prediction & suggestions</SectionTitle>
