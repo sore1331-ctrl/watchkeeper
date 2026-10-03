@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { StoreProvider } from "@/lib/store";
 import { Shell } from "@/components/shell";
+import { OfflineSupport } from "@/components/offline";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -52,6 +53,7 @@ export default function RootLayout({
         <StoreProvider>
           <Shell>{children}</Shell>
         </StoreProvider>
+        <OfflineSupport />
       </body>
     </html>
   );
