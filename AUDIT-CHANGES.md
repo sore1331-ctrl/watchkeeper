@@ -98,7 +98,7 @@ Migration `0010` was applied to the live database first and verified.
 |---|--------|--------|-----|---------|
 | 48 | `393a871` | Opening the measurement dialog checks the device clock against the server and shows the result ("0.8 s slow", or "right to within 50 ms"). The reference clock, the Now stamp and tap-to-capture are corrected by it. Offline, it says so and uses the device clock as before. Readings taken with a checked clock are flagged and counted as having 0.1 s of reference error instead of the assumed 0.5 s; the CSV export has the flag | Every offset is measured against the device clock, which nothing checked | Tested with a simulated 0.8 s clock error: detected, the tap was corrected by it, the reading saved as checked, and the offline message appears when the check fails. Uncertainty on a 10-day test set falls from ±0.32 to ±0.23 s/d. On a real host the server and device are different machines; here they were the same one, so a true error was not observed |
 
-## Movement matching and catalog — branch `catalog-matching`, not yet on `main`
+## Movement matching and catalog — merged into `main` on 2026-10-03
 
 All three rows share commit `ffce757`. **Row 49 and 50 change the tolerance, and so the grade and health score, of affected watches.**
 
