@@ -106,7 +106,7 @@ export default function ReportsPage() {
   // the same spec-relative stability the health score is built from
   const stability = health?.components.find((c) => c.name === "Stability")?.score ?? null;
   const fmtDay = (iso: string) =>
-    new Date(iso).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
+    new Date(iso).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
 
   const exportJson = () =>
     download("watchkeeper-export.json", "application/json", JSON.stringify({
@@ -165,7 +165,7 @@ export default function ReportsPage() {
             <h2 className="mt-1 text-xl font-bold">{watch.brand} {watch.model}</h2>
             <p className="text-sm text-muted">
               {watch.reference} · cal. {watch.caliber} · {stats.count} measurements ·
-              generated {new Date().toLocaleDateString("en-GB")}
+              generated {new Date().toLocaleDateString()}
             </p>
             <p className="text-xs text-faint">
               Self-measured against the owner&apos;s device clock — not a laboratory certificate.

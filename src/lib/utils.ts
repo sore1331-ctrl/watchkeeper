@@ -7,7 +7,7 @@ export function cn(...inputs: ClassValue[]) {
 
 export function fmtDate(iso: string | null | undefined): string {
   if (!iso) return "—";
-  return new Date(iso).toLocaleDateString("en-GB", {
+  return new Date(iso).toLocaleDateString(undefined, {
     day: "numeric",
     month: "short",
     year: "numeric",
@@ -16,7 +16,7 @@ export function fmtDate(iso: string | null | undefined): string {
 
 export function fmtDateTime(iso: string | null | undefined): string {
   if (!iso) return "—";
-  return new Date(iso).toLocaleString("en-GB", {
+  return new Date(iso).toLocaleString(undefined, {
     day: "numeric",
     month: "short",
     hour: "2-digit",

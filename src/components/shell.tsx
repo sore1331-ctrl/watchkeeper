@@ -162,7 +162,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
             <span className="text-sm font-bold">WatchKeeper</span>
           </Link>
           <div className="hidden text-xs text-muted md:block">
-            {new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
+            {/* after hydration only: the server does not know the reader's locale */}
+            {ready && new Date().toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
           </div>
           <div className="relative flex items-center gap-1">
             <button

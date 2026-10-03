@@ -13,7 +13,7 @@ const GRID = "var(--chart-grid)";
 const AXIS = { stroke: "transparent", tickLine: false as const };
 
 export const fmtDay = (iso: string) =>
-  new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+  new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short" });
 
 // Shared tooltip
 export function ChartTip({
@@ -310,7 +310,7 @@ export function AccuracyHeatmap({
             {col.map((c, j) => (
               <div
                 key={j}
-                title={`${c.date.toLocaleDateString("en-GB", { day: "numeric", month: "short" })}${c.spd !== undefined ? ` · ${c.spd > 0 ? "+" : ""}${c.spd.toFixed(1)} s/d` : " · no data"}`}
+                title={`${c.date.toLocaleDateString(undefined, { day: "numeric", month: "short" })}${c.spd !== undefined ? ` · ${c.spd > 0 ? "+" : ""}${c.spd.toFixed(1)} s/d` : " · no data"}`}
                 className="h-3.5 w-3.5 rounded-[3px]"
                 style={{
                   background: colorFor(c.spd),
