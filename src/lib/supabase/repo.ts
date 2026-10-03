@@ -13,6 +13,9 @@ import { getSupabase } from "./client";
 
 type Client = NonNullable<ReturnType<typeof getSupabase>>;
 
+/** Used only if a row somehow has no currency; matches the app's own default. */
+const FALLBACK_CURRENCY = "GBP";
+
 async function withUser(): Promise<{ sb: Client; userId: string } | null> {
   const sb = getSupabase();
   if (!sb) return null;
@@ -52,7 +55,7 @@ const toWatch = (r: any): Watch => ({
   rateSpecMin: r.rate_spec_min ?? undefined, rateSpecMax: r.rate_spec_max ?? undefined,
   rateSpecSource: r.rate_spec_source ?? undefined,
   purchaseDate: r.purchase_date ?? undefined, purchasePrice: r.purchase_price ?? undefined,
-  currentValue: r.current_value ?? undefined, currency: r.currency ?? "EUR",
+  currentValue: r.current_value ?? undefined, currency: r.currency ?? FALLBACK_CURRENCY,
   photoUrl: r.photo_url ?? undefined, accentColor: r.accent_color ?? "#059669",
   notes: r.notes ?? undefined,
   batteryInstalledAt: r.battery_installed_at ?? undefined,
@@ -116,7 +119,7 @@ const toWishlist = (r: any): WishlistItem => ({
   movementType: (r.movement_type ?? undefined) as MovementType | undefined,
   caliber: r.caliber ?? undefined,
   targetPrice: r.target_price == null ? undefined : Number(r.target_price),
-  currency: r.currency ?? "GBP",
+  currency: r.currency ?? FALLBACK_CURRENCY,
   priority: r.priority as WishlistItem["priority"],
   status: r.status as WishlistItem["status"],
   url: r.url ?? undefined, notes: r.notes ?? undefined,
@@ -126,7 +129,7 @@ const toWishlist = (r: any): WishlistItem => ({
 
 const toService = (r: any): ServiceRecord => ({
   id: r.id, watchId: r.watch_id, date: r.date, type: r.type as ServiceType,
-  watchmaker: r.watchmaker ?? "—", cost: Number(r.cost ?? 0), currency: r.currency ?? "EUR",
+  watchmaker: r.watchmaker ?? "—", cost: Number(r.cost ?? 0), currency: r.currency ?? FALLBACK_CURRENCY,
   notes: r.notes ?? undefined, partsReplaced: r.parts_replaced ?? undefined,
   pressureTestPassed: r.pressure_test_passed ?? undefined,
   waterResistanceRating: r.water_resistance_rating ?? undefined,
