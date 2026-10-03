@@ -193,12 +193,10 @@ export interface Insight {
 export type RestingHandling = "include" | "separate" | "exclude";
 
 export interface AppSettings {
-  displayName: string;
   /** ISO 4217 code used for new watches and collection totals */
   currency: string;
   restingReadings: RestingHandling;
-  temperatureUnit: "C" | "F";
   measurementReminderDays: number;
+  /** years between services for mechanical watches (quartz uses 8) */
   serviceIntervalYears: number;
-  theme: "dark" | "light" | "system";
 }

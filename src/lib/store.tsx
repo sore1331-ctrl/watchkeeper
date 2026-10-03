@@ -76,13 +76,10 @@ export type SyncState =
   | { status: "error"; message: string };
 
 const DEFAULT_SETTINGS: AppSettings = {
-  displayName: "Collector",
   currency: "GBP", // replaced by the browser's locale on first run
   restingReadings: "separate",
-  temperatureUnit: "C",
   measurementReminderDays: 3,
   serviceIntervalYears: 5,
-  theme: "dark",
 };
 
 interface StoreValue {

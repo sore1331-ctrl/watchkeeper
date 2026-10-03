@@ -24,13 +24,6 @@ export default function SettingsPage() {
 
       <Card className="space-y-4 p-5">
         <div>
-          <Label>Display name</Label>
-          <Input
-            value={settings.displayName}
-            onChange={(e) => updateSettings({ displayName: e.target.value })}
-          />
-        </div>
-        <div>
           <Label>Currency</Label>
           <Select
             value={settings.currency}
@@ -71,16 +64,6 @@ export default function SettingsPage() {
           </p>
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <div>
-            <Label>Temperature unit</Label>
-            <Select
-              value={settings.temperatureUnit}
-              onChange={(e) => updateSettings({ temperatureUnit: e.target.value as "C" | "F" })}
-            >
-              <option value="C">Celsius</option>
-              <option value="F">Fahrenheit</option>
-            </Select>
-          </div>
           <div>
             <Label>Measurement reminder (days)</Label>
             <Input
