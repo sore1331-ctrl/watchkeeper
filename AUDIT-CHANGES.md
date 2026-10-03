@@ -90,11 +90,9 @@ Rows 42–44 share commit `62f8132`; undoing one on its own is a manual job.
 | 46 | `061cf3b` | Installable app: PNG, maskable and Apple icons; a service worker caching the app's own files (build assets cache-first, pages network-first with the last copy as fallback). Production only | So it can be added to a phone's home screen and opened without a connection | Tested on a production build: worker active, pages and 28 assets cached, icons served. Not installed on a real phone; offline not simulated |
 | 47 | `efad410` | Settings has a "Light theme accent" choice: Navy ink (default) or Racing green. Saved on the device and applied before first paint; the dark theme keeps brass | You asked to be able to switch between the two | Tested: both colours apply, survive a reload, and dark is unaffected |
 
-## Checked reference time — branch `checked-time`, not yet on `main`
+## Checked reference time — merged into `main` on 2026-10-03
 
-**Needs migration `0010` applied before it is merged**: the app sends a new
-`reference_checked` column with every measurement, and without the column
-measurement sync fails.
+Migration `0010` was applied to the live database first and verified.
 
 | # | Commit | Change | Why | Checked |
 |---|--------|--------|-----|---------|
