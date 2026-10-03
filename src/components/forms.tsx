@@ -11,7 +11,7 @@ import type {
 } from "@/lib/types";
 import { Button, Dialog, DialogContent, DialogTrigger, Empty, Input, Label, Select, Switch, Textarea } from "./ui";
 import {
-  filterSuggestions, modelsForBrand, specForCaliber, WATCH_BRANDS, type CatalogModel,
+  filterSuggestions, modelsForBrand, specForCaliber, suggestModels, WATCH_BRANDS, type CatalogModel,
 } from "@/lib/watch-catalog";
 import { CURRENCIES } from "@/lib/utils";
 import { checkClock, describeClockError, type ClockCheck } from "@/lib/clock";
@@ -896,11 +896,10 @@ export function WatchDialog({
   const brandModels = useMemo(() => modelsForBrand(form.brand), [form.brand]);
   const modelSuggestions = useMemo(
     () =>
-      filterSuggestions(form.model, brandModels.map((m) => m.model)).map((label) => {
-        const m = brandModels.find((x) => x.model === label);
-        return { label, sub: m?.reference ?? m?.caliber };
-      }),
-    [form.model, brandModels]
+      suggestModels(form.brand, form.model).map((m) => ({
+        label: m.model, sub: m.reference ?? m.caliber,
+      })),
+    [form.brand, form.model]
   );
 
   // Spec implied by the caliber the user has typed/picked — shown as the
@@ -1169,11 +1168,10 @@ export function WishlistDialog({
   const brandModels = useMemo(() => modelsForBrand(form.brand), [form.brand]);
   const modelSuggestions = useMemo(
     () =>
-      filterSuggestions(form.model, brandModels.map((m) => m.model)).map((label) => {
-        const m = brandModels.find((x) => x.model === label);
-        return { label, sub: m?.reference ?? m?.caliber };
-      }),
-    [form.model, brandModels]
+      suggestModels(form.brand, form.model).map((m) => ({
+        label: m.model, sub: m.reference ?? m.caliber,
+      })),
+    [form.brand, form.model]
   );
 
   const applyModel = (label: string) => {

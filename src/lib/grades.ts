@@ -2,7 +2,7 @@
 
 import type { AccuracyGrade, HealthLabel, MovementType, ServiceRecord, Watch } from "./types";
 import type { WatchStats } from "./stats";
-import { modelsForBrand, specForCaliber, type RateSpec } from "./watch-catalog";
+import { matchCatalogModels, specForCaliber, type RateSpec } from "./watch-catalog";
 
 export type { RateSpec };
 
@@ -27,23 +27,21 @@ export function rateSpecFor(watch: Watch): RateSpec | null {
       source: watch.rateSpecSource ?? "Custom specification",
     };
 
-  const byCaliber = specForCaliber(watch.caliber, watch.coscCertified, watch.brand);
-  if (byCaliber) return byCaliber;
+  // A caliber was entered: that is the movement, recognised or not. Falling
+  // back to the catalog model's caliber here would put a Speedmaster with an
+  // 1861 on the 3861's Master Chronometer band.
+  if (watch.caliber?.trim())
+    return specForCaliber(watch.caliber, watch.coscCertified, watch.brand);
 
-  // No caliber recorded — look the model up in the catalog and use its
-  // caliber. Someone who typed "Seiko SSK001" without filling in "4R34"
-  // should still be graded against the 4R34's tolerance.
-  const known = modelsForBrand(watch.brand).find((m) => {
-    const q = watch.model.trim().toLowerCase();
-    const mm = m.model.toLowerCase();
-    return (
-      mm === q ||
-      mm.includes(q) ||
-      q.includes(mm) ||
-      (!!m.reference && m.reference.toLowerCase() === q)
-    );
-  });
-  if (known?.caliber) return specForCaliber(known.caliber, watch.coscCertified, watch.brand);
+  // No caliber recorded — look the model up in the catalog. Someone who typed
+  // "Seiko SSK001" without filling in "4R34" should still be graded against
+  // the 4R34's tolerance. A partial name can match several models; it is only
+  // used when they all agree on the tolerance.
+  const specs = matchCatalogModels(watch.brand, watch.model)
+    .filter((m) => m.caliber)
+    .map((m) => specForCaliber(m.caliber, watch.coscCertified, watch.brand));
+  const first = specs[0];
+  if (first && specs.every((x) => x && x.min === first.min && x.max === first.max)) return first;
 
   return specForCaliber(undefined, watch.coscCertified);
 }
