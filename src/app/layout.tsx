@@ -27,6 +27,10 @@ export const viewport: Viewport = {
   themeColor: "#0a0e14",
 };
 
+// Applies the saved theme before first paint. Without it the page always
+// drew dark and then flipped for anyone who had chosen light.
+const themeInit = `try{var t=localStorage.getItem("wk-theme");if(t==="light"||(t==="system"&&!matchMedia("(prefers-color-scheme: dark)").matches))document.documentElement.classList.remove("dark")}catch(e){}`;
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -38,6 +42,9 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} dark h-full antialiased`}
       suppressHydrationWarning
     >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeInit }} />
+      </head>
       <body className="min-h-full">
         <StoreProvider>
           <Shell>{children}</Shell>

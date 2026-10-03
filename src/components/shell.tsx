@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -10,6 +10,7 @@ import {
 import { AnimatePresence, motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useStore } from "@/lib/store";
+import { useTheme } from "@/lib/theme";
 import { Badge } from "./ui";
 
 /** `mobile` marks the five shown in the bottom bar on small screens. */
@@ -25,25 +26,6 @@ const NAV = [
   { href: "/account", label: "Account", icon: UserRound, mobile: false },
   { href: "/settings", label: "Settings", icon: Settings, mobile: false },
 ];
-
-function useTheme() {
-  const [dark, setDark] = useState(true);
-  useEffect(() => {
-    const stored = window.localStorage.getItem("wk-theme");
-    const isDark = stored ? stored === "dark" : true;
-    setDark(isDark);
-    document.documentElement.classList.toggle("dark", isDark);
-  }, []);
-  const toggle = () => {
-    setDark((d) => {
-      const next = !d;
-      document.documentElement.classList.toggle("dark", next);
-      window.localStorage.setItem("wk-theme", next ? "dark" : "light");
-      return next;
-    });
-  };
-  return { dark, toggle };
-}
 
 function NotificationsPanel({ onClose }: { onClose: () => void }) {
   const { notifications, dismissNotification, watches } = useStore();

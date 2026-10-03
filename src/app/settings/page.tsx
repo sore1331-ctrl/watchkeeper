@@ -11,9 +11,11 @@ import { SectionTitle } from "@/components/widgets";
 import { getSupabase } from "@/lib/supabase/client";
 import { CURRENCIES } from "@/lib/utils";
 import type { RestingHandling } from "@/lib/types";
+import { useTheme, type ThemeMode } from "@/lib/theme";
 
 export default function SettingsPage() {
   const { ready, settings, updateSettings, resetDemoData, demo, cloudSynced } = useStore();
+  const { mode, setMode } = useTheme();
   if (!ready) return <Skeleton className="h-96" />;
 
   const supabaseConfigured = !!getSupabase();
@@ -23,6 +25,14 @@ export default function SettingsPage() {
       <h1 className="mb-6 text-2xl font-bold tracking-tight">Settings</h1>
 
       <Card className="space-y-4 p-5">
+        <div>
+          <Label>Theme</Label>
+          <Select value={mode} onChange={(e) => setMode(e.target.value as ThemeMode)}>
+            <option value="dark">Dark</option>
+            <option value="light">Light</option>
+            <option value="system">Match this device</option>
+          </Select>
+        </div>
         <div>
           <Label>Currency</Label>
           <Select
