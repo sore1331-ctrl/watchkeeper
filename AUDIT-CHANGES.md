@@ -76,7 +76,7 @@ Known trade-offs in row 40: in the light theme the accent and "positive" are
 both greens. The five chart series colours are unchanged and are below 4.5:1
 on the light surface (3.1–4.2:1), which is acceptable for lines but not text.
 
-## Calculation fixes, layout and installable app — branch `calc-and-app`, not yet on `main`
+## Calculation fixes, layout and installable app — merged into `main` on 2026-10-03
 
 Rows 42–44 share commit `62f8132`; undoing one on its own is a manual job.
 **Row 42 changes the numbers every watch shows.**
@@ -88,6 +88,7 @@ Rows 42–44 share commit `62f8132`; undoing one on its own is a manual job.
 | 44 | `62f8132` | Dashboard leads with four figures and folds the other eight under "More figures"; collection page shows the watches first with the highlights folded away | Twelve equal cards on the dashboard, ten above the first watch | Tested |
 | 45 | `cb20c7e` | Light-theme accent is navy ink (`#1f3a5f`) instead of racing green | Green accent read as "good". Brass was tried on paper and is the same dark amber as "Regulation due" | Contrast computed; not seen rendered |
 | 46 | `061cf3b` | Installable app: PNG, maskable and Apple icons; a service worker caching the app's own files (build assets cache-first, pages network-first with the last copy as fallback). Production only | So it can be added to a phone's home screen and opened without a connection | Tested on a production build: worker active, pages and 28 assets cached, icons served. Not installed on a real phone; offline not simulated |
+| 47 | `efad410` | Settings has a "Light theme accent" choice: Navy ink (default) or Racing green. Saved on the device and applied before first paint; the dark theme keeps brass | You asked to be able to switch between the two | Tested: both colours apply, survive a reload, and dark is unaffected |
 
 ## Decided on 2026-10-03
 
