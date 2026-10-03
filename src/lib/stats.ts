@@ -13,6 +13,8 @@ export interface RateSample {
   offset: number;
   /** hours between the two measurements */
   gapHours: number;
+  /** how well the offset change across the interval is known, seconds */
+  errorS: number;
   /**
    * Conditions the watch was kept in *during* this interval. These come from
    * the earlier measurement — the state you recorded when you set the watch
@@ -264,6 +266,16 @@ export const READING_ERROR_S = 0.5;
  * a measurement.
  */
 export const REFERENCE_ERROR_S = 0.5;
+/**
+ * The same, for a reading whose reference was checked against the server and
+ * corrected: what is left is the precision of that check.
+ */
+export const CHECKED_REFERENCE_ERROR_S = 0.1;
+
+/** How well one reading's offset is known: dial-reading error plus reference error. */
+const readingError = (m: Measurement) =>
+  Math.hypot(READING_ERROR_S, m.referenceChecked ? CHECKED_REFERENCE_ERROR_S : REFERENCE_ERROR_S);
+
 // Each reading carries both errors; two readings make an interval.
 const INTERVAL_ERROR_S = Math.hypot(READING_ERROR_S, REFERENCE_ERROR_S) * Math.SQRT2;
 
@@ -364,6 +376,7 @@ function classify(
         spd,
         offset: cur.offsetSeconds,
         gapHours,
+        errorS: Math.hypot(readingError(prev), readingError(cur)),
         // conditions during the interval = how the watch was left at its start
         worn: prev.wornToday,
         position: prev.wornToday ? "on-wrist" : prev.position,
@@ -589,11 +602,13 @@ export function computeStats(
   const avg = meanRate(headlineSamples);
   const sd = stdDev(spds);
   // Uncertainty of that average from reading error alone: each interval's
-  // gain is known to ±INTERVAL_ERROR_S, and the average is their sum over
-  // the total time.
+  // gain is known to its own ±errorS (smaller where the reference was
+  // checked), and the average is their sum over the total time.
   const totalDays = headlineSamples.reduce((a, s) => a + s.gapHours, 0) / 24;
   const avgSpdError =
-    totalDays > 0 ? (INTERVAL_ERROR_S * Math.sqrt(headlineSamples.length)) / totalDays : null;
+    totalDays > 0
+      ? Math.sqrt(headlineSamples.reduce((a, s) => a + s.errorS ** 2, 0)) / totalDays
+      : null;
   const t0 = +new Date(headlineSamples[0].date);
   const pts = headlineSamples.map((s) => ({ x: (+new Date(s.date) - t0) / DAY_MS, y: s.spd }));
   const absPts = headlineSamples.map((s) => ({ x: (+new Date(s.date) - t0) / DAY_MS, y: Math.abs(s.spd) }));

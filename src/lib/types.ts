@@ -93,6 +93,12 @@ export interface Measurement extends Synced {
    * nightstand, a knock, a demagnetising, or anything else unrepresentative.
    */
   excludeFromRate?: boolean;
+  /**
+   * The reference time came from the app's clock after that had been checked
+   * against the server and corrected. Such a reading carries far less
+   * reference error than one timed against an unchecked device clock.
+   */
+  referenceChecked?: boolean;
   notes?: string;
   photoUrl?: string;
 }

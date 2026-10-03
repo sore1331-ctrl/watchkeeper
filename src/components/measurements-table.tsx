@@ -47,7 +47,7 @@ export function exportMeasurementsCsv(watch: Watch, ms: Measurement[]) {
     powerReserveHours: watch.powerReserveHours, movementType: watch.movementType,
   });
   const spdByDate = new Map(samples.map((s) => [s.date, s.spd]));
-  const header = "date,reference_time,watch_time,offset_s,rate_spd,temperature_c,position,power_reserve_pct,worn,time_corrected,excluded,notes";
+  const header = "date,reference_time,watch_time,offset_s,rate_spd,temperature_c,position,power_reserve_pct,worn,time_corrected,excluded,reference_checked,notes";
   const rows = ms.map((m) =>
     [
       m.measuredAt, m.referenceTime, m.watchTime, m.offsetSeconds,
@@ -56,6 +56,7 @@ export function exportMeasurementsCsv(watch: Watch, ms: Measurement[]) {
       m.wornToday ? 1 : 0,
       m.timeAdjusted ? 1 : 0,
       m.excludeFromRate ? 1 : 0,
+      m.referenceChecked ? 1 : 0,
       m.notes ?? "",
     ].map(csvField).join(",")
   );

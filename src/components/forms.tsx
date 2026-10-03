@@ -14,6 +14,7 @@ import {
   filterSuggestions, modelsForBrand, specForCaliber, WATCH_BRANDS, type CatalogModel,
 } from "@/lib/watch-catalog";
 import { CURRENCIES } from "@/lib/utils";
+import { checkClock, describeClockError, type ClockCheck } from "@/lib/clock";
 
 // ── Autocomplete input ──────────────────────────────────────────────────────
 interface Suggestion {
@@ -173,29 +174,54 @@ function TimeInput({
   );
 }
 
-const nowHms = () => {
-  const d = new Date();
+/** HH:MM:SS now, on the device clock shifted by a measured correction. */
+const nowHms = (offsetMs = 0) => {
+  const d = new Date(Date.now() + offsetMs);
   const p = (n: number) => String(n).padStart(2, "0");
   return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 };
+
+/** Where the check of the device clock against the server stands. */
+type ClockState =
+  | { status: "checking" }
+  | { status: "unavailable" }
+  | ({ status: "ok" } & ClockCheck);
+
+function ClockStatus({ clock }: { clock: ClockState }) {
+  if (clock.status === "checking") return <>Checking this device&apos;s clock…</>;
+  if (clock.status === "unavailable")
+    return (
+      <>
+        Couldn&apos;t check this device&apos;s clock (offline?), so it is used as it is —
+        usually within a second of true time.
+      </>
+    );
+  const error = describeClockError(clock);
+  return error ? (
+    <>This device&apos;s clock is {error}. The times here are corrected for it.</>
+  ) : (
+    <>
+      This device&apos;s clock was checked against the server and is right to within{" "}
+      {Math.max(50, Math.round(clock.uncertaintyMs))} ms.
+    </>
+  );
+}
 
 /**
  * Live reference clock.
  *
  * Every figure this app produces is a difference against a reference, so the
- * reference has to be visible and trustworthy. This ticks in real time so the
- * seconds hand can be read against it directly — the way the measurement is
- * actually taken — and tapping it stamps the field.
+ * reference has to be visible and trustworthy. It shows the device's time
+ * corrected by the check against the server, ticks in real time so the
+ * seconds hand can be read against it directly, and tapping it stamps the field.
  */
-function ReferenceClock({ onUse }: { onUse: (t: string) => void }) {
-  const [now, setNow] = useState(() => new Date());
+function ReferenceClock({ onUse, clock }: { onUse: (t: string) => void; clock: ClockState }) {
+  const [, setTick] = useState(0);
   useEffect(() => {
-    // align to the next whole second, then tick once a second
-    const id = setInterval(() => setNow(new Date()), 250);
+    const id = setInterval(() => setTick((n) => n + 1), 250);
     return () => clearInterval(id);
   }, []);
-  const p = (n: number) => String(n).padStart(2, "0");
-  const text = `${p(now.getHours())}:${p(now.getMinutes())}:${p(now.getSeconds())}`;
+  const text = nowHms(clock.status === "ok" ? clock.offsetMs : 0);
   return (
     <button
       type="button"
@@ -205,10 +231,7 @@ function ReferenceClock({ onUse }: { onUse: (t: string) => void }) {
     >
       <p className="text-[10px] uppercase tracking-wider text-muted">Or type the times — tap to stamp the reference</p>
       <p className="font-mono text-2xl font-bold tabular-nums">{text}</p>
-      <p className="mt-0.5 text-[10px] text-faint">
-        This device&apos;s own clock. It is usually within a second of true time but
-        is not checked — compare it with time.is if the last second matters.
-      </p>
+      <p className="mt-0.5 text-[11px] text-faint"><ClockStatus clock={clock} /></p>
     </button>
   );
 }
@@ -324,7 +347,7 @@ function TapCapture({
         <div className="mt-2 space-y-1.5 text-xs">
           <p className="text-muted">
             Watch read <span className="font-mono font-semibold text-foreground">{hmsOfMs(captured.lastWatchMs)}</span>{" "}
-            when this device read{" "}
+            when the reference read{" "}
             <span className="font-mono font-semibold text-foreground">
               {hmsOfMs(captured.lastRefMs)}.{Math.floor((captured.lastRefMs % 1000) / 100)}
             </span>
@@ -388,6 +411,31 @@ export function MeasurementDialog({
   // from the capture (or, when editing, from the reading as stored) — both
   // are finer than the whole seconds the two fields can express.
   const [timesEdited, setTimesEdited] = useState(false);
+  // The device clock, checked against the server each time the form opens.
+  const [clock, setClock] = useState<ClockState>({ status: "checking" });
+  const clockOffset = clock.status === "ok" ? clock.offsetMs : 0;
+  // Whether the reference time came from the app's own (checked) clock rather
+  // than being typed in from somewhere else.
+  const [refFromApp, setRefFromApp] = useState(true);
+  // anything entered since the form opened — the clock check must not overwrite it
+  const touched = useRef(false);
+
+  const runClockCheck = () => {
+    setClock({ status: "checking" });
+    void checkClock().then((c) => {
+      setClock(c ? { status: "ok", ...c } : { status: "unavailable" });
+      // nothing entered yet: restamp the prefilled times with the corrected clock
+      if (c && !touched.current) {
+        const t = nowHms(c.offsetMs);
+        setForm((f) => ({
+          ...f,
+          referenceTime: t,
+          watchTime: t,
+          measuredAt: toLocalInput(new Date(Date.now() + c.offsetMs).toISOString()),
+        }));
+      }
+    });
+  };
   const [openState, setOpen] = useState(false);
   const open = openProp ?? openState;
   const editing = !!existing;
@@ -416,17 +464,31 @@ export function MeasurementDialog({
   /** A time field was typed into: from here the fields are the truth. */
   const editTime = (k: "referenceTime" | "watchTime", v: string) => {
     if (v !== form[k]) {
+      touched.current = true;
       clearCapture();
       setTimesEdited(true);
+      // a typed reference could have come from anywhere
+      if (k === "referenceTime") setRefFromApp(false);
     }
     set(k, v);
   };
 
-  /** Stamp both time fields with the current clock — on open and on demand. */
-  const syncToNow = () => {
-    const t = nowHms();
+  /** Stamp the reference field from the app's clock. */
+  const stampReference = (t: string) => {
+    touched.current = true;
     clearCapture();
     setTimesEdited(true);
+    setRefFromApp(true);
+    set("referenceTime", t);
+  };
+
+  /** Stamp both time fields with the current clock — on open and on demand. */
+  const syncToNow = () => {
+    const t = nowHms(clockOffset);
+    touched.current = true;
+    clearCapture();
+    setTimesEdited(true);
+    setRefFromApp(true);
     setForm((f) => ({ ...f, referenceTime: t, watchTime: t }));
   };
 
@@ -434,6 +496,7 @@ export function MeasurementDialog({
   const loadExisting = (m: Measurement) => {
     clearCapture();
     setTimesEdited(false);
+    setRefFromApp(true);
     setForm({
       watchId: m.watchId,
       measuredAt: toLocalInput(m.measuredAt),
@@ -462,9 +525,12 @@ export function MeasurementDialog({
       if (existing) {
         loadExisting(existing);
       } else {
-        const t = nowHms();
+        const t = nowHms(clockOffset);
         clearCapture();
         setTimesEdited(false);
+        setRefFromApp(true);
+        touched.current = false;
+        runClockCheck();
         setForm((f) => ({
           ...f,
           // The dialog stays mounted while the page's selected watch changes, so
@@ -509,6 +575,8 @@ export function MeasurementDialog({
   /** Record taps / a minute correction, and show the result in the time fields. */
   const applyCapture = (nextTaps: Tap[], nextShift: number) => {
     const r = resolve(nextTaps, nextShift);
+    touched.current = true;
+    setRefFromApp(true);
     setTaps(nextTaps);
     setMinuteShift(nextShift);
     setTimesEdited(false);
@@ -566,6 +634,12 @@ export function MeasurementDialog({
       timeAdjusted: form.timeAdjusted || undefined,
       excludeFromRate: form.excludeFromRate || undefined,
       notes: form.notes || undefined,
+      // an edit keeps the flag unless a time was retyped; a new reading earns
+      // it when its reference came from the app's clock and that was checked
+      referenceChecked:
+        (existing
+          ? !timesEdited && existing.referenceChecked
+          : refFromApp && clock.status === "ok") || undefined,
     };
 
     if (existing) {
@@ -581,7 +655,7 @@ export function MeasurementDialog({
     // or every later measurement would be treated as a fresh baseline
     setForm((f) => ({
       ...f,
-      referenceTime: nowHms(), watchTime: nowHms(),
+      referenceTime: nowHms(clockOffset), watchTime: nowHms(clockOffset),
       timeAdjusted: false, excludeFromRate: false, notes: "",
     }));
   };
@@ -624,7 +698,9 @@ export function MeasurementDialog({
               mark={mark}
               onMark={setMark}
               captured={captured}
-              onTap={(refMs) => {
+              onTap={(deviceMs) => {
+                // the tap is timed on the device; correct it to true time
+                const refMs = deviceMs + clockOffset;
                 // a second press within two seconds is a bounce, not a reading
                 const last = taps[taps.length - 1];
                 if (last && refMs - last.refMs < 2000) return;
@@ -635,7 +711,7 @@ export function MeasurementDialog({
             />
           )}
           {!editing && (
-            <ReferenceClock onUse={(t) => editTime("referenceTime", t)} />
+            <ReferenceClock onUse={stampReference} clock={clock} />
           )}
 
           <div className="grid grid-cols-2 gap-3">
