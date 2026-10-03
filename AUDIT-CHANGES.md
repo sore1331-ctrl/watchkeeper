@@ -70,7 +70,7 @@ but I could not exercise it (mostly because it needs a signed-in account).
 | # | Commit | Change | Why | Checked |
 |---|--------|--------|-----|---------|
 | 40 | `25026ed` | New colour tokens: light is paper and racing green, dark is midnight and brass. Dark warning is orange and the COSC badge is platinum, so neither is confused with the brass accent. Icon, manifest, browser theme colour and the error page follow | Chosen palettes A and C | Every text colour computed at 4.5:1 or better on both surfaces; dark tokens confirmed live |
-| 41 | see log | Tap to capture in the new-measurement dialog: tap as the seconds hand crosses 12, 3, 6 or 9 and the offset is worked out, to a tenth of a second. Several taps are averaged; −1 / +1 minute corrects a wrong minute. Editing a reading no longer rounds its stored offset to a whole second unless a time is retyped | Typing two times was the slow, error-prone step | Tested with simulated taps: offset, averaging, minute correction and save. Not tried against a real watch |
+| 41 | `efb0a4a` | Tap to capture in the new-measurement dialog: tap as the seconds hand crosses 12, 3, 6 or 9 and the offset is worked out, to a tenth of a second. Several taps are averaged; −1 / +1 minute corrects a wrong minute. Editing a reading no longer rounds its stored offset to a whole second unless a time is retyped | Typing two times was the slow, error-prone step | Tested with simulated taps: offset, averaging, minute correction and save. Not tried against a real watch |
 
 Known trade-offs in row 40: in the light theme the accent and "positive" are
 both greens. The five chart series colours are unchanged and are below 4.5:1
