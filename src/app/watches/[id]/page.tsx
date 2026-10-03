@@ -29,8 +29,6 @@ import {
 import { Badge, Button, Card, Empty, Skeleton, Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui";
 import { MeasurementsTable } from "@/components/measurements-table";
 
-const DAY_MS = 86_400_000;
-
 export default function WatchDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
