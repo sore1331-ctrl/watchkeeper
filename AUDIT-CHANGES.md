@@ -50,7 +50,7 @@ but I could not exercise it (mostly because it needs a signed-in account).
 | 28 | `58db058` | Error boundaries: a failing page shows a message and the rest of the app keeps working; a failure in the data store shows a page with "Download my data" and "Try again" | Any exception in the store blanked every page | Type-checked — not triggered |
 | 29 | `84861dc` | Trend, stability-change and "rate has shifted" insights and notifications only appear when the last reading is within 14 days; Reports say their weekly and monthly figures end at the last reading | Old readings were described as "this month" and "recent" | Tested (reports line) |
 | 30 | `c5eb102` | Settings and snoozed notifications sync between devices, newest wins | They stayed on one device. **Inactive until migration `0008` is applied**; until then the step is skipped silently | Type-checked |
-| 31 | `15d432d` | Rate uncertainty allows 0.5 s for the unchecked device clock as well as 0.5 s for reading the dial | It assumed a perfect reference. **This widens the stated ± error and the 95% interval** by about 40%. The 0.5 s figure is an assumption | Type-checked |
+| 31 | `15d432d` | Rate uncertainty allows 0.5 s for the unchecked device clock as well as 0.5 s for reading the dial | It assumed a perfect reference. **This widens the stated ± error** by about 40%, and the 95% interval by less. The 0.5 s figure is an assumption | Type-checked |
 | 32 | `4f655b7` | One fallback currency (GBP) in the row mappers; migration `0009` aligns the column defaults | Tables disagreed (EUR vs GBP). No visible effect — the fallback never triggers | Type-checked |
 
 ## Not done — needs your decision
