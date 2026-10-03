@@ -113,13 +113,13 @@ not verify one: Nomos, IWC, JLC, Zenith, Cartier, Panerai, Patek, AP, Lange,
 Vacheron, Glashütte Original, Hamilton H-10/H-50, Mido Caliber 80, Longines
 L888, ETA 7750 / Sellita SW500, and all quartz except Grand Seiko 9F.
 
-## Citizen catalog — branch `citizen-catalog`, not yet on `main`
+## Citizen catalog — merged into `main` on 2026-10-03
 
 | # | Commit | Change | Why | Checked |
 |---|--------|--------|-----|---------|
 | 52 | `b1b3b5a` | Citizen goes from 3 models to 18: four Attesa, six Promaster, three Series 8, Tsuyosa, Eco-Drive One and three The Citizen. Citizen tolerances added: 90xx automatics −10/+20, Caliber 0950 −5/+10, Caliber 0200 −3/+5, Satellite Wave F9xx ±5 s/month, Eco-Drive and radio-controlled quartz ±15 s/month, A060 ±5 s/year, Caliber 0100 ±1 s/year | The Attesa line was missing and Citizen quartz had no tolerance | References, calibers and tolerances looked up. Two things are not verified: the U680 (Navihawk) is assumed to share the standard ±15 s/month, and the H800 Attesa entry has no reference number. All 18 entries and 8 typed inputs tested |
 
-## Catalog rebuilt around movements — branch `catalog-movements` (includes `citizen-catalog`), not yet on `main`
+## Catalog rebuilt around movements — merged into `main` on 2026-10-03
 
 | # | Commit | Change | Why | Checked |
 |---|--------|--------|-----|---------|
