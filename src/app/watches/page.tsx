@@ -14,8 +14,9 @@ import { GradeBadge, HealthBadge, SectionTitle, StatCard } from "@/components/wi
 import { Button, Card, Skeleton } from "@/components/ui";
 
 export default function WatchesPage() {
-  const { ready, watches, analysisFor, servicesFor, settings } = useStore();
+  const { ready, watches, analysisFor, servicesFor, settings, updateWatch } = useStore();
   const active = watches.filter((w) => !w.archived);
+  const archived = watches.filter((w) => w.archived);
 
   const rows = useMemo(
     () =>
@@ -144,6 +145,28 @@ export default function WatchesPage() {
           </Link>
         ))}
       </div>
+
+      {archived.length > 0 && (
+        <>
+          <SectionTitle>Archived</SectionTitle>
+          <p className="-mt-2 mb-3 text-xs text-muted">
+            Kept with all their readings, but left out of the dashboard, analytics and reminders.
+          </p>
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {archived.map((w) => (
+              <Card key={w.id} className="flex items-center justify-between gap-3 p-4">
+                <Link href={`/watches/${w.id}`} className="min-w-0 hover:text-accent">
+                  <p className="truncate text-sm font-semibold">{w.brand} {w.model}</p>
+                  <p className="truncate text-xs text-muted">{w.reference ?? w.caliber ?? w.movementType}</p>
+                </Link>
+                <Button variant="secondary" size="sm" onClick={() => updateWatch(w.id, { archived: false })}>
+                  Unarchive
+                </Button>
+              </Card>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }

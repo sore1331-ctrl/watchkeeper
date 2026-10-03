@@ -6,7 +6,7 @@ import React, { useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
-  AlertTriangle, ArrowLeft, Info, Pencil, Plus, ShieldCheck, Trash2, Wrench,
+  AlertTriangle, Archive, ArchiveRestore, ArrowLeft, Info, Pencil, Plus, ShieldCheck, Trash2, Wrench,
 } from "lucide-react";
 import { useStore } from "@/lib/store";
 import {
@@ -114,6 +114,7 @@ export default function WatchDetailPage() {
               <Badge color="var(--grade-cosc)"><ShieldCheck className="h-3 w-3" /> COSC certified</Badge>
             )}
             {anomaly?.drifting && <Badge color="var(--critical)">Drifting</Badge>}
+            {watch.archived && <Badge color="var(--muted)">Archived</Badge>}
           </div>
           <p className="mt-1 text-sm text-muted">
             {watch.reference} · cal. {watch.caliber} · {watch.movementType}
@@ -124,8 +125,17 @@ export default function WatchDetailPage() {
           <WatchDialog existing={watch} trigger={
             <Button variant="secondary" size="sm"><Pencil className="h-3.5 w-3.5" /> Edit</Button>
           } />
+          {/* Archiving keeps the watch and its readings but takes it off the
+              dashboard, analytics and reminders — for one sold or put away. */}
+          <Button variant="ghost" size="sm"
+            title={watch.archived ? "Return to the collection" : "Archive — keep the data, hide the watch"}
+            onClick={() => store.updateWatch(watch.id, { archived: !watch.archived })}>
+            {watch.archived
+              ? <><ArchiveRestore className="h-3.5 w-3.5" /> Unarchive</>
+              : <><Archive className="h-3.5 w-3.5" /> Archive</>}
+          </Button>
           {!confirmDelete ? (
-            <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(true)}>
+            <Button variant="ghost" size="sm" title="Delete" onClick={() => setConfirmDelete(true)}>
               <Trash2 className="h-3.5 w-3.5" />
             </Button>
           ) : (
