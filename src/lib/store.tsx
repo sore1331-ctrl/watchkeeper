@@ -46,8 +46,27 @@ interface PersistedState {
   demo: boolean;
   /** ids this device has already exchanged with the cloud (see lib/sync) */
   syncedIds?: string[];
+  /**
+   * The account those ids were exchanged with. A different account signing in
+   * on this device must never be merged with them: its cloud lacks every one,
+   * which would read as "deleted elsewhere", and anything unsynced would be
+   * uploaded into the wrong account.
+   */
+  syncedUserId?: string;
+  /**
+   * Deletions the cloud has not confirmed yet. Without these a record deleted
+   * offline (or whose cloud delete failed) is still in the cloud at the next
+   * sync and would simply be merged back in.
+   */
+  pendingDeletes?: repo.PendingDelete[];
   lastSyncedAt?: string;
 }
+
+const OTHER_ACCOUNT_MESSAGE =
+  "This device holds data from a different account, so nothing was synced. " +
+  "Sign back in to that account, or clear this device first with Settings → Reset to demo data.";
+
+const deleteKey = (d: repo.PendingDelete) => `${d.table}:${d.id}`;
 
 export type SyncState =
   | { status: "off" }            // Supabase not configured
@@ -111,6 +130,12 @@ interface StoreValue {
   syncNow: () => Promise<void>;
   /** JSON of everything on this device, for a manual backup */
   exportBackup: () => string;
+  /** Put the records in a backup file back on this device. Throws if it isn't one. */
+  importBackup: (json: string) => {
+    watches: number; measurements: number; services: number; wishlist: number;
+  };
+  /** the browser refused the last save (storage full or blocked) */
+  saveFailed: boolean;
 }
 
 const StoreContext = createContext<StoreValue | null>(null);
@@ -135,7 +160,7 @@ function loadPersisted(): PersistedState | null {
       settings.currency = commonest ?? detectCurrency();
     }
 
-    return {
+    const loaded: PersistedState = {
       ...parsed,
       settings,
       // earlier builds stored bare keys that never expired
@@ -143,6 +168,12 @@ function loadPersisted(): PersistedState | null {
         typeof d === "string" ? { key: d as string, at: new Date().toISOString() } : d
       ),
     };
+    // Earlier builds gave the sample collection the same ids on every device.
+    // If this copy has never been synced, give it its own now.
+    const demoIds = new Set(DEMO_WATCHES.map((w) => w.id));
+    const hasSharedIds =
+      !loaded.syncedIds?.length && (loaded.watches ?? []).some((w) => demoIds.has(w.id));
+    return hasSharedIds ? withFreshIds(loaded) : loaded;
   } catch {
     return null;
   }
@@ -152,7 +183,7 @@ function freshDemoState(): PersistedState {
   // Sample figures are shown in the viewer's own currency — the numbers are
   // illustrative either way, and it avoids inventing a currency for someone.
   const currency = detectCurrency();
-  return {
+  return withFreshIds({
     watches: DEMO_WATCHES.map((w) => ({ ...w, currency })),
     measurements: generateDemoMeasurements(),
     services: DEMO_SERVICES.map((s) => ({ ...s, currency })),
@@ -160,13 +191,36 @@ function freshDemoState(): PersistedState {
     settings: { ...DEFAULT_SETTINGS, currency },
     dismissedNotifications: [],
     demo: true,
+  });
+}
+
+/**
+ * Re-key a collection. Ids are primary keys shared by every account in the
+ * cloud, and the sample collection becomes the user's own once they add to
+ * it — so each device's copy needs ids no other device has.
+ */
+function withFreshIds(st: PersistedState): PersistedState {
+  const watchIds = new Map(st.watches.map((w) => [w.id, uid()]));
+  const wid = (old: string) => watchIds.get(old) ?? old;
+  return {
+    ...st,
+    watches: st.watches.map((w) => ({ ...w, id: wid(w.id) })),
+    measurements: st.measurements.map((m) => ({ ...m, id: uid(), watchId: wid(m.watchId) })),
+    services: st.services.map((sv) => ({ ...sv, id: uid(), watchId: wid(sv.watchId) })),
+    wishlist: (st.wishlist ?? []).map((w) => ({
+      ...w, id: uid(),
+      acquiredWatchId: w.acquiredWatchId ? wid(w.acquiredWatchId) : undefined,
+    })),
+    // snoozes are keyed by watch id
+    dismissedNotifications: [],
   };
 }
 
 /**
- * Snapshot the device's data under a timestamped key before the first merge
- * touches it. Cheap insurance: if a sync ever went wrong, the pre-sync state
- * is still sitting in localStorage.
+ * Snapshot the device's data under a timestamped key before a sync changes
+ * it. Cheap insurance: if a sync ever went wrong, the pre-sync state is still
+ * sitting in localStorage. Only taken when the sync is about to alter what is
+ * on the device, so routine syncs don't rotate the useful snapshots away.
  */
 function backupBeforeSync(state: PersistedState) {
   try {
@@ -192,6 +246,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stateRef = useRef<PersistedState | null>(null);
   const syncing = useRef(false);
+  const [saveFailed, setSaveFailed] = useState(false);
+  const fromOtherTab = useRef(false);
   stateRef.current = state;
 
   // hydrate + watch the auth session
@@ -216,16 +272,67 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     return () => listener.subscription.unsubscribe();
   }, []);
 
+  const save = useCallback((st: PersistedState) => {
+    const json = JSON.stringify(st);
+    try {
+      window.localStorage.setItem(LS_KEY, json);
+      setSaveFailed(false);
+    } catch {
+      // Out of room: the pre-sync snapshots are the only thing that can go.
+      try {
+        for (const k of Object.keys(window.localStorage))
+          if (k.startsWith(`${LS_KEY}-backup-`)) window.localStorage.removeItem(k);
+        window.localStorage.setItem(LS_KEY, json);
+        setSaveFailed(false);
+      } catch {
+        setSaveFailed(true);
+      }
+    }
+  }, []);
+
   // persist (debounced)
   useEffect(() => {
     if (!state) return;
+    // state adopted from another tab is already in storage
+    if (fromOtherTab.current) {
+      fromOtherTab.current = false;
+      return;
+    }
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
-      try {
-        window.localStorage.setItem(LS_KEY, JSON.stringify(state));
-      } catch { /* storage full — ignore */ }
+      saveTimer.current = null;
+      save(state);
     }, 400);
-  }, [state]);
+  }, [state, save]);
+
+  useEffect(() => {
+    // don't let the debounce lose the last change when the tab goes away
+    const flush = () => {
+      if (!saveTimer.current || !stateRef.current) return;
+      clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+      save(stateRef.current);
+    };
+    // Another tab saved: adopt its copy, or this tab's next save would
+    // silently overwrite it with what it loaded earlier.
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== LS_KEY || !e.newValue) return;
+      const next = loadPersisted();
+      if (!next) return;
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+      fromOtherTab.current = true;
+      setState(next);
+    };
+    window.addEventListener("pagehide", flush);
+    document.addEventListener("visibilitychange", flush);
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener("pagehide", flush);
+      document.removeEventListener("visibilitychange", flush);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, [save]);
 
   const mutate = useCallback((fn: (s: PersistedState) => PersistedState) => {
     setState((s) => (s ? fn(s) : s));
@@ -234,9 +341,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   /**
    * Reconcile this device with the cloud.
    *
-   * Order matters for safety: back up locally, pull, merge in memory, upload
-   * anything the cloud is missing, and only then commit the merged state. If
-   * any step throws, local data is untouched.
+   * Order matters for safety: pull, merge in memory, upload anything the
+   * cloud is missing, back up locally, and only then commit the merged state.
+   * If any step throws, local data is untouched.
    */
   const runSync = useCallback(async () => {
     const current = stateRef.current;
@@ -246,10 +353,20 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     const { data: sess } = await sb.auth.getSession();
     if (!sess.session) return;
 
+    const userId = sess.session.user.id;
     syncing.current = true;
     setSync({ status: "syncing" });
     try {
-      backupBeforeSync(current);
+      if (current.syncedUserId && current.syncedUserId !== userId)
+        throw new Error(OTHER_ACCOUNT_MESSAGE);
+
+      // Deletions first, so the pull below no longer contains those records.
+      const pending = current.pendingDeletes ?? [];
+      await repo.pushDeletes(pending);
+      const confirmed = new Set(pending.map(deleteKey));
+      const stillPending = (st: PersistedState) =>
+        (st.pendingDeletes ?? []).filter((d) => !confirmed.has(deleteKey(d)));
+
       const remote = await repo.pullAll();
       if (!remote) throw new Error("Not signed in");
 
@@ -258,9 +375,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       // if the account is empty, the demo stays on this device untouched.
       if (current.demo) {
         if (remote.watches.length === 0) {
+          mutate((st) => ({ ...st, pendingDeletes: stillPending(st) }));
           setSync({ status: "synced", at: new Date().toISOString() });
           return;
         }
+        backupBeforeSync(current);
         mutate((st) => ({
           ...st,
           watches: remote.watches,
@@ -274,6 +393,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
             ...remote.services.map((r) => r.id),
             ...remote.wishlist.map((r) => r.id),
           ],
+          syncedUserId: userId,
+          pendingDeletes: stillPending(st),
           lastSyncedAt: new Date().toISOString(),
         }));
         setSync({ status: "synced", at: new Date().toISOString() });
@@ -295,6 +416,18 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         wishlist: wl.toUpload as WishlistItem[],
       });
 
+      const alters = <T extends { id: string }>(
+        res: { merged: T[]; removedRemotely: string[] }, local: T[]
+      ) => {
+        const mine = new Set(local);
+        return res.removedRemotely.length > 0 || res.merged.some((r) => !mine.has(r));
+      };
+      if (
+        alters(w, current.watches) || alters(m, current.measurements) ||
+        alters(s, current.services) || alters(wl, current.wishlist ?? [])
+      )
+        backupBeforeSync(current);
+
       const at = new Date().toISOString();
       const allIds = [
         ...w.merged.map((r) => r.id),
@@ -302,16 +435,43 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         ...s.merged.map((r) => r.id),
         ...wl.merged.map((r) => r.id),
       ];
-      mutate((st) => ({
-        ...st,
-        watches: w.merged as Watch[],
-        measurements: m.merged as Measurement[],
-        services: s.merged as ServiceRecord[],
-        wishlist: wl.merged as WishlistItem[],
-        demo: false,
-        syncedIds: allIds,
-        lastSyncedAt: at,
-      }));
+      mutate((st) => {
+        // anything deleted while this sync was in flight stays deleted
+        const left = stillPending(st);
+        const gone = (table: repo.DeleteTable) =>
+          new Set(left.filter((d) => d.table === table).map((d) => d.id));
+        const goneWatches = gone("watches");
+        const keep = <T extends { id: string }>(rows: T[], table: repo.DeleteTable) => {
+          const ids = gone(table);
+          return ids.size ? rows.filter((r) => !ids.has(r.id)) : rows;
+        };
+        const ofLiveWatch = <T extends { watchId: string }>(rows: T[]) =>
+          goneWatches.size ? rows.filter((r) => !goneWatches.has(r.watchId)) : rows;
+        // The merge was computed from the state as it was when the sync began.
+        // Anything added or edited since then is newer than all of it.
+        const overlay = <T extends { id: string }>(merged: T[], before: T[], now: T[]) => {
+          const was = new Set(before);
+          const changed = now.filter((r) => !was.has(r));
+          if (!changed.length) return merged;
+          const ids = new Set(changed.map((r) => r.id));
+          return [...merged.filter((r) => !ids.has(r.id)), ...changed];
+        };
+        return {
+          ...st,
+          watches: keep(overlay(w.merged as Watch[], current.watches, st.watches), "watches"),
+          measurements: ofLiveWatch(keep(
+            overlay(m.merged as Measurement[], current.measurements, st.measurements), "measurements")),
+          services: ofLiveWatch(keep(
+            overlay(s.merged as ServiceRecord[], current.services, st.services), "services")),
+          wishlist: keep(
+            overlay(wl.merged as WishlistItem[], current.wishlist ?? [], st.wishlist ?? []), "wishlist"),
+          demo: false,
+          syncedIds: allIds,
+          syncedUserId: userId,
+          pendingDeletes: left,
+          lastSyncedAt: at,
+        };
+      });
       setSync({ status: "synced", at });
     } catch (e) {
       setSync({ status: "error", message: e instanceof Error ? e.message : "Sync failed" });
@@ -329,6 +489,14 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("focus", onFocus);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
+
+  // The sample collection is never uploaded; once it becomes the user's own
+  // (see `demo: false` below) everything on the device needs to go up.
+  const isDemo = state?.demo;
+  useEffect(() => {
+    if (user && isDemo === false) void runSync();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDemo]);
 
   const value = useMemo<StoreValue>(() => {
     const s = state ?? freshDemoState();
@@ -363,6 +531,26 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         )
       : [];
 
+    // Never mirror a change into an account other than the one this device's
+    // data belongs to (see syncedUserId).
+    // Sample data is never uploaded; changes to it stay on this device.
+    const cloud =
+      !s.demo && (!user || !s.syncedUserId || s.syncedUserId === user.id) ? repo : null;
+    // A failed mirror loses nothing — the next sync sends it — but say so.
+    const mirror = (p: Promise<void> | undefined) => {
+      p?.catch((e: unknown) =>
+        setSync({
+          status: "error",
+          message:
+            `A change could not be saved to your account (${e instanceof Error ? e.message : "network error"}). ` +
+            "It is kept on this device and will be sent at the next sync.",
+        })
+      );
+    };
+    // Remember a deletion until a sync confirms the cloud has applied it.
+    const tombstone = (st: PersistedState, table: repo.DeleteTable, id: string) =>
+      user || st.syncedUserId ? [...(st.pendingDeletes ?? []), { table, id }] : st.pendingDeletes;
+
     return {
       ready: state !== null,
       demo: s.demo,
@@ -391,7 +579,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       addWatch: (w) => {
         const created: Watch = touch({ ...w, id: uid() });
         mutate((st) => ({ ...st, demo: false, watches: [...st.watches, created] }));
-        repo.upsertWatch(created);
+        mirror(cloud?.upsertWatch(created));
         return created;
       },
       updateWatch: (id, patch) => {
@@ -401,7 +589,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           ...st,
           watches: st.watches.map((x) => (x.id === id ? touch({ ...x, ...patch }) : x)),
         }));
-        if (next) repo.upsertWatch(next);
+        if (next) mirror(cloud?.upsertWatch(next));
       },
       deleteWatch: (id) => {
         mutate((st) => ({
@@ -409,13 +597,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           watches: st.watches.filter((x) => x.id !== id),
           measurements: st.measurements.filter((m) => m.watchId !== id),
           services: st.services.filter((x) => x.watchId !== id),
+          pendingDeletes: tombstone(st, "watches", id),
         }));
-        repo.deleteWatch(id);
+        mirror(cloud?.deleteWatch(id));
       },
       addMeasurement: (m) => {
         const created: Measurement = touch({ ...m, id: uid() });
-        mutate((st) => ({ ...st, measurements: [...st.measurements, created] }));
-        repo.upsertMeasurement(created);
+        // adding a reading to a sample watch makes the collection yours
+        mutate((st) => ({ ...st, demo: false, measurements: [...st.measurements, created] }));
+        mirror(cloud?.upsertMeasurement(created));
         return created;
       },
       updateMeasurement: (id, patch) => {
@@ -425,24 +615,29 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           ...st,
           measurements: st.measurements.map((x) => (x.id === id ? touch({ ...x, ...patch }) : x)),
         }));
-        if (next) repo.upsertMeasurement(next);
+        if (next) mirror(cloud?.upsertMeasurement(next));
       },
       deleteMeasurement: (id) => {
         mutate((st) => ({
           ...st,
           measurements: st.measurements.filter((x) => x.id !== id),
+          pendingDeletes: tombstone(st, "measurements", id),
         }));
-        repo.deleteMeasurement(id);
+        mirror(cloud?.deleteMeasurement(id));
       },
       addService: (sv) => {
         const created: ServiceRecord = touch({ ...sv, id: uid() });
-        mutate((st) => ({ ...st, services: [...st.services, created] }));
-        repo.upsertService(created);
+        mutate((st) => ({ ...st, demo: false, services: [...st.services, created] }));
+        mirror(cloud?.upsertService(created));
         return created;
       },
       deleteService: (id) => {
-        mutate((st) => ({ ...st, services: st.services.filter((x) => x.id !== id) }));
-        repo.deleteService(id);
+        mutate((st) => ({
+          ...st,
+          services: st.services.filter((x) => x.id !== id),
+          pendingDeletes: tombstone(st, "services", id),
+        }));
+        mirror(cloud?.deleteService(id));
       },
       wishlist: s.wishlist ?? [],
       addWishlistItem: (w) => {
@@ -450,7 +645,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           ...w, id: uid(), addedAt: new Date().toISOString(),
         });
         mutate((st) => ({ ...st, wishlist: [...(st.wishlist ?? []), created] }));
-        repo.upsertWishlistItem(created);
+        mirror(cloud?.upsertWishlistItem(created));
         return created;
       },
       updateWishlistItem: (id, patch) => {
@@ -460,11 +655,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           ...st,
           wishlist: (st.wishlist ?? []).map((x) => (x.id === id ? touch({ ...x, ...patch }) : x)),
         }));
-        if (next) repo.upsertWishlistItem(next);
+        if (next) mirror(cloud?.upsertWishlistItem(next));
       },
       deleteWishlistItem: (id) => {
-        mutate((st) => ({ ...st, wishlist: (st.wishlist ?? []).filter((x) => x.id !== id) }));
-        repo.deleteWishlistItem(id);
+        mutate((st) => ({
+          ...st,
+          wishlist: (st.wishlist ?? []).filter((x) => x.id !== id),
+          pendingDeletes: tombstone(st, "wishlist", id),
+        }));
+        mirror(cloud?.deleteWishlistItem(id));
       },
       moveWishlistToCollection: (id, purchase) => {
         const item = (s.wishlist ?? []).find((x) => x.id === id);
@@ -501,8 +700,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           watches: [...st.watches, watch],
           wishlist: (st.wishlist ?? []).map((x) => (x.id === id ? acquired : x)),
         }));
-        repo.upsertWatch(watch);
-        repo.upsertWishlistItem(acquired);
+        mirror(cloud?.upsertWatch(watch));
+        mirror(cloud?.upsertWishlistItem(acquired));
         return watch;
       },
       updateSettings: (patch) => {
@@ -568,13 +767,74 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
             watches: s.watches,
             measurements: s.measurements,
             services: s.services,
+            wishlist: s.wishlist ?? [],
             settings: s.settings,
           },
           null,
           2
         ),
+      importBackup: (json) => {
+        let data: Record<string, unknown>;
+        try {
+          data = JSON.parse(json);
+        } catch {
+          throw new Error("That file is not valid JSON.");
+        }
+        const notBackup = new Error("That file is not a WatchKeeper backup.");
+        if (!data || typeof data !== "object") throw notBackup;
+        const rows = <T extends { id: string }>(
+          v: unknown, ok: (r: Record<string, unknown>) => boolean
+        ): T[] => {
+          if (v == null) return [];
+          if (!Array.isArray(v)) throw notBackup;
+          for (const r of v)
+            if (!r || typeof r !== "object" || typeof r.id !== "string" || !ok(r)) throw notBackup;
+          return v as T[];
+        };
+        const str = (x: unknown) => typeof x === "string";
+        const watches = rows<Watch>(data.watches, (r) => str(r.brand) && str(r.model));
+        const measurements = rows<Measurement>(data.measurements, (r) =>
+          str(r.watchId) && typeof r.offsetSeconds === "number" &&
+          str(r.measuredAt) && !Number.isNaN(+new Date(r.measuredAt as string)));
+        const services = rows<ServiceRecord>(data.services, (r) => str(r.watchId) && str(r.date));
+        const wishlist = rows<WishlistItem>(data.wishlist, (r) => str(r.brand) && str(r.model));
+        if (!watches.length && !measurements.length && !services.length && !wishlist.length)
+          throw new Error("That backup contains no records.");
+
+        const restored = new Set(
+          [...watches, ...measurements, ...services, ...wishlist].map((r) => r.id)
+        );
+        // Restored records replace their twins and are stamped as just changed,
+        // so the next sync uploads them rather than preferring an older cloud copy.
+        const put = <T extends { id: string }>(have: T[], add: T[]) => [
+          ...have.filter((r) => !restored.has(r.id)),
+          ...add.map((r) => touch(r) as T),
+        ];
+        mutate((st) => {
+          // a restore replaces the sample collection; it adds to a real one
+          const base = st.demo
+            ? { ...st, watches: [], measurements: [], services: [], wishlist: [] }
+            : st;
+          return {
+            ...base,
+            demo: false,
+            watches: put(base.watches, watches),
+            measurements: put(base.measurements, measurements),
+            services: put(base.services, services),
+            wishlist: put(base.wishlist ?? [], wishlist),
+            // not "deleted elsewhere" if the cloud lacks them — they are back
+            syncedIds: (st.syncedIds ?? []).filter((x) => !restored.has(x)),
+            pendingDeletes: (st.pendingDeletes ?? []).filter((d) => !restored.has(d.id)),
+          };
+        });
+        return {
+          watches: watches.length, measurements: measurements.length,
+          services: services.length, wishlist: wishlist.length,
+        };
+      },
+      saveFailed,
     };
-  }, [state, cloudSynced, mutate, user, sync, runSync]);
+  }, [state, cloudSynced, mutate, user, sync, runSync, saveFailed]);
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
 }

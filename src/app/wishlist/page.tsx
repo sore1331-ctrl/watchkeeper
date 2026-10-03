@@ -10,7 +10,7 @@ import {
 import { useStore } from "@/lib/store";
 import type { WishlistItem, WishlistStatus } from "@/lib/types";
 import { specForCaliber, findCatalogModel } from "@/lib/watch-catalog";
-import { fmtDate, fmtMoney, fmtTotal } from "@/lib/utils";
+import { fmtDate, fmtMoney, fmtTotal, safeHttpUrl } from "@/lib/utils";
 import { WishlistDialog } from "@/components/forms";
 import { SectionTitle, StatCard } from "@/components/widgets";
 import { Badge, Button, Card, Empty, Skeleton } from "@/components/ui";
@@ -68,7 +68,7 @@ export default function WishlistPage() {
 
   const renderCard = (item: WishlistItem, muted = false) => {
     const known = findCatalogModel(item.brand, item.model);
-    const spec = specForCaliber(item.caliber ?? known?.caliber, known?.cosc);
+    const spec = specForCaliber(item.caliber ?? known?.caliber, known?.cosc, item.brand);
     const status = STATUS_META[item.status];
     const linkedWatch = item.acquiredWatchId
       ? watches.find((w) => w.id === item.acquiredWatchId)
@@ -138,8 +138,8 @@ export default function WishlistPage() {
           <Button variant="secondary" size="sm" onClick={() => setEditing(item)}>
             <Pencil className="h-3.5 w-3.5" /> Edit
           </Button>
-          {item.url && (
-            <a href={item.url} target="_blank" rel="noopener noreferrer">
+          {safeHttpUrl(item.url) && (
+            <a href={safeHttpUrl(item.url)!} target="_blank" rel="noopener noreferrer">
               <Button variant="ghost" size="sm">
                 <ExternalLink className="h-3.5 w-3.5" /> Listing
               </Button>

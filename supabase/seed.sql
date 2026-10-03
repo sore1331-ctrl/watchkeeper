@@ -1,19 +1,29 @@
 -- WatchKeeper seed data.
--- Rows are owned by a user, so pick the auth user to seed for. This script
--- seeds the FIRST user in auth.users; adjust the sub-select if needed.
+-- Rows are owned by a user, and this Supabase project is shared with other
+-- apps — so the account to seed must be named explicitly, never guessed:
+--
+--   set wk.seed_email = 'you@example.com';
+--   \i supabase/seed.sql
+--
 -- The app also ships a rich client-side demo dataset (5 watches, ~150 days of
 -- measurements) that loads automatically in local mode — this SQL seed is a
 -- minimal cloud-side starter.
 
 do $$
 declare
+  seed_email text := nullif(current_setting('wk.seed_email', true), '');
   uid uuid;
+  -- ids are primary keys shared by every account, so make them per-user
+  p text;
 begin
-  select id into uid from auth.users order by created_at limit 1;
-  if uid is null then
-    raise notice 'No users found — sign up first, then re-run the seed.';
-    return;
+  if seed_email is null then
+    raise exception 'Set wk.seed_email to the account to seed before running this script.';
   end if;
+  select id into uid from auth.users where email = seed_email;
+  if uid is null then
+    raise exception 'No user with email % — sign up first, then re-run the seed.', seed_email;
+  end if;
+  p := 'seed-' || uid::text || '-';
 
   insert into wk_profiles (user_id, display_name) values (uid, 'Collector')
   on conflict (user_id) do nothing;
@@ -22,10 +32,10 @@ begin
     beat_rate, power_reserve_hours, jewels, cosc_certified, purchase_date,
     purchase_price, current_value, currency, accent_color, notes)
   values
-    ('seed-speedmaster', uid, 'Omega', 'Speedmaster Professional', '310.30.42.50.01.001',
+    (p || 'speedmaster', uid, 'Omega', 'Speedmaster Professional', '310.30.42.50.01.001',
      'manual', '3861', 21600, 50, 26, true, '2022-09-03', 6900, 7200, 'EUR', '#3b82f6',
      'Moonwatch, hand-wound every morning.'),
-    ('seed-spb143', uid, 'Seiko', 'Prospex SPB143', 'SPB143J1',
+    (p || 'spb143', uid, 'Seiko', 'Prospex SPB143', 'SPB143J1',
      'automatic', '6R35', 21600, 70, 24, false, '2021-06-20', 1250, 1100, 'EUR', '#d97706',
      'Weekend beater.')
   on conflict (id) do nothing;
@@ -34,9 +44,9 @@ begin
   insert into wk_measurements (id, user_id, watch_id, measured_at, reference_time,
     watch_time, offset_seconds, temperature_c, position, worn_today)
   select
-    'seed-m-' || d,
+    p || 'm-' || d,
     uid,
-    'seed-speedmaster',
+    p || 'speedmaster',
     now() - (14 - d) * interval '1 day',
     '08:00:00',
     '08:00:0' || least(9, d)::text,
@@ -48,7 +58,7 @@ begin
   on conflict (id) do nothing;
 
   insert into wk_services (id, user_id, watch_id, date, type, watchmaker, cost, currency, notes)
-  values ('seed-svc-1', uid, 'seed-speedmaster', '2024-10-08', 'full-service',
+  values (p || 'svc-1', uid, p || 'speedmaster', '2024-10-08', 'full-service',
     'Omega Boutique', 620, 'EUR', 'Full movement service, new mainspring.')
   on conflict (id) do nothing;
 end $$;

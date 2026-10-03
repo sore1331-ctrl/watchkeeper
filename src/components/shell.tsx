@@ -102,7 +102,7 @@ function NotificationsPanel({ onClose }: { onClose: () => void }) {
 export function Shell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { dark, toggle } = useTheme();
-  const { notifications, demo, cloudSynced, ready, sync, user } = useStore();
+  const { notifications, demo, cloudSynced, ready, sync, user, saveFailed } = useStore();
   const [showNotifs, setShowNotifs] = useState(false);
 
   return (
@@ -204,7 +204,16 @@ export function Shell({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
-        <main className="flex-1 px-4 py-6 pb-24 md:px-8 md:pb-8">{children}</main>
+        <main className="flex-1 px-4 py-6 pb-24 md:px-8 md:pb-8">
+          {saveFailed && (
+            <p className="mb-4 rounded-lg bg-critical/10 px-3 py-2 text-xs text-critical">
+              This browser&apos;s storage is full or blocked, so your latest changes are not being
+              saved and will be lost on reload.{" "}
+              <Link href="/account" className="font-semibold underline">Download a backup</Link> now.
+            </p>
+          )}
+          {children}
+        </main>
 
         {/* Bottom nav — mobile */}
         <nav className="glass fixed inset-x-0 bottom-0 z-40 flex justify-around border-t border-border-token py-1.5 md:hidden">

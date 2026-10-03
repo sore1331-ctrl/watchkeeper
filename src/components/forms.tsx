@@ -348,9 +348,12 @@ export function MeasurementDialog({
       referenceTime: normalizeTime(form.referenceTime),
       watchTime: normalizeTime(form.watchTime),
       offsetSeconds: offset,
-      temperatureC: form.temperatureC ? +form.temperatureC : undefined,
+      temperatureC: form.temperatureC !== "" ? +form.temperatureC : undefined,
       position: form.position,
-      powerReservePct: form.powerReservePct ? +form.powerReservePct : undefined,
+      powerReservePct:
+        form.powerReservePct !== ""
+          ? Math.max(0, Math.min(100, +form.powerReservePct))
+          : undefined,
       wornToday: form.wornToday,
       timeAdjusted: form.timeAdjusted || undefined,
       excludeFromRate: form.excludeFromRate || undefined,
@@ -603,8 +606,8 @@ export function WatchDialog({
   // Spec implied by the caliber the user has typed/picked — shown as the
   // placeholder so it's clear what the watch will be graded against.
   const detectedSpec = useMemo(
-    () => specForCaliber(form.caliber, form.coscCertified),
-    [form.caliber, form.coscCertified]
+    () => specForCaliber(form.caliber, form.coscCertified, form.brand),
+    [form.caliber, form.coscCertified, form.brand]
   );
 
   /** Prefill specs from the catalog, only into fields the user hasn't filled. */
@@ -875,8 +878,8 @@ export function WishlistDialog({
 
   // what this movement is built to, so you know before you buy
   const spec = useMemo(
-    () => specForCaliber(form.caliber || undefined, false),
-    [form.caliber]
+    () => specForCaliber(form.caliber || undefined, false, form.brand),
+    [form.caliber, form.brand]
   );
 
   const submit = () => {
@@ -1060,7 +1063,7 @@ export function ServiceDialog({
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div><Label>Watchmaker</Label><Input value={form.watchmaker} onChange={(e) => set("watchmaker", e.target.value)} /></div>
-            <div><Label>Cost (€)</Label><Input type="number" value={form.cost} onChange={(e) => set("cost", e.target.value)} /></div>
+            <div><Label>Cost ({watches.find((w) => w.id === form.watchId)?.currency ?? settings.currency})</Label><Input type="number" value={form.cost} onChange={(e) => set("cost", e.target.value)} /></div>
           </div>
           <div><Label>Parts replaced (comma separated)</Label><Input value={form.partsReplaced} onChange={(e) => set("partsReplaced", e.target.value)} placeholder="mainspring, gaskets" /></div>
           {form.type === "pressure-test" && (

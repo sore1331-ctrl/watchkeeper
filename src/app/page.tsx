@@ -59,6 +59,11 @@ export default function DashboardPage() {
       ? Math.max(0, watch.powerReserveHours - (Date.now() - +new Date(lastWorn.measuredAt)) / 3_600_000)
       : null;
   const todayInsights = insights.filter((i) => i.watchId === watch.id).slice(0, 3);
+  // The rolling windows end at the last reading, not today — say so once
+  // that reading is old enough for "latest" to mislead.
+  const stale =
+    stats.lastMeasuredAt != null && Date.now() - +new Date(stats.lastMeasuredAt) > 7 * 86_400_000;
+  const asOf = stale ? `as of ${relTime(stats.lastMeasuredAt)}` : null;
 
   return (
     <div className="fade-up">
@@ -92,9 +97,9 @@ export default function DashboardPage() {
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:gap-4">
         <StatCard label="Current offset" value={fmtSec(stats.currentOffset)} accent={watch.accentColor}
           sub={`measured ${relTime(stats.lastMeasuredAt)}`} delay={0} />
-        <StatCard label="Today's gain/loss" value={fmtSpd(stats.todayRate)}
+        <StatCard label={stale ? "Last gain/loss" : "Today's gain/loss"} value={fmtSpd(stats.todayRate)}
           trend={stats.todayRate == null ? undefined : stats.todayRate > 0.3 ? "up" : stats.todayRate < -0.3 ? "down" : "flat"}
-          sub="latest daily rate" delay={0.05} />
+          sub={asOf ?? "latest daily rate"} delay={0.05} />
         <StatCard label="Avg daily rate" value={fmtSpd(stats.avgSpd)}
           sub={`median ${fmtSpd(stats.medianSpd)}`} delay={0.1} />
         <StatCard label="Movement health" value={health ? `${health.score}` : "—"}
@@ -104,8 +109,8 @@ export default function DashboardPage() {
           sub="s²/d, last 7 days" delay={0.2} />
         <StatCard label="Monthly variance" value={stats.monthlyVariance?.toFixed(2) ?? "—"}
           sub="s²/d, last 30 days" delay={0.25} />
-        <StatCard label="Rolling 7-day" value={fmtSpd(stats.rolling7)} sub="average rate" delay={0.3} />
-        <StatCard label="Rolling 30-day" value={fmtSpd(stats.rolling30)} sub="average rate" delay={0.35} />
+        <StatCard label="Rolling 7-day" value={fmtSpd(stats.rolling7)} sub={asOf ?? "average rate"} delay={0.3} />
+        <StatCard label="Rolling 30-day" value={fmtSpd(stats.rolling30)} sub={asOf ?? "average rate"} delay={0.35} />
         <StatCard label="Days since regulation" value={regDays ?? "—"}
           sub={regDays != null ? "days" : "no record"} delay={0.4} />
         <StatCard label="Days since service" value={svcDays ?? "—"}

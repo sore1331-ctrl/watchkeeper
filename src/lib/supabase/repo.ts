@@ -66,7 +66,10 @@ const measurementRow = (m: Measurement, userId: string) => ({
   id: m.id, user_id: userId, watch_id: m.watchId,
   measured_at: m.measuredAt, reference_time: m.referenceTime, watch_time: m.watchTime,
   offset_seconds: m.offsetSeconds, temperature_c: m.temperatureC ?? null,
-  position: m.position ?? null, power_reserve_pct: m.powerReservePct ?? null,
+  position: m.position ?? null,
+  // the column is checked 0–100; one stray value must not block every sync
+  power_reserve_pct:
+    m.powerReservePct == null ? null : Math.max(0, Math.min(100, m.powerReservePct)),
   worn_today: m.wornToday, time_adjusted: m.timeAdjusted ?? false,
   exclude_from_rate: m.excludeFromRate ?? false,
   notes: m.notes ?? null, photo_url: m.photoUrl ?? null,
@@ -131,42 +134,48 @@ const toService = (r: any): ServiceRecord => ({
 });
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
-// ── single-record mirrors (fire-and-forget on local mutations) ──────────────
+// ── single-record mirrors ───────────────────────────────────────────────────
+// Each rejects when the cloud refuses the write, so the caller can say so. The
+// record itself is safe either way: the next sync sends whatever is missing.
+
+const check = ({ error }: { error: { message: string } | null }) => {
+  if (error) throw new Error(error.message);
+};
 
 export async function upsertWatch(w: Watch) {
   const ctx = await withUser();
   if (!ctx) return;
-  await ctx.sb.from("wk_watches").upsert(watchRow(w, ctx.userId));
+  check(await ctx.sb.from("wk_watches").upsert(watchRow(w, ctx.userId)));
 }
 
 export async function deleteWatch(id: string) {
   const ctx = await withUser();
   if (!ctx) return;
-  await ctx.sb.from("wk_watches").delete().eq("id", id);
+  check(await ctx.sb.from("wk_watches").delete().eq("id", id));
 }
 
 export async function upsertMeasurement(m: Measurement) {
   const ctx = await withUser();
   if (!ctx) return;
-  await ctx.sb.from("wk_measurements").upsert(measurementRow(m, ctx.userId));
+  check(await ctx.sb.from("wk_measurements").upsert(measurementRow(m, ctx.userId)));
 }
 
 export async function deleteMeasurement(id: string) {
   const ctx = await withUser();
   if (!ctx) return;
-  await ctx.sb.from("wk_measurements").delete().eq("id", id);
+  check(await ctx.sb.from("wk_measurements").delete().eq("id", id));
 }
 
 export async function upsertService(s: ServiceRecord) {
   const ctx = await withUser();
   if (!ctx) return;
-  await ctx.sb.from("wk_services").upsert(serviceRow(s, ctx.userId));
+  check(await ctx.sb.from("wk_services").upsert(serviceRow(s, ctx.userId)));
 }
 
 export async function deleteService(id: string) {
   const ctx = await withUser();
   if (!ctx) return;
-  await ctx.sb.from("wk_services").delete().eq("id", id);
+  check(await ctx.sb.from("wk_services").delete().eq("id", id));
 }
 
 // ── bulk sync ───────────────────────────────────────────────────────────────
@@ -174,13 +183,13 @@ export async function deleteService(id: string) {
 export async function upsertWishlistItem(w: WishlistItem) {
   const ctx = await withUser();
   if (!ctx) return;
-  await ctx.sb.from("wk_wishlist").upsert(wishlistRow(w, ctx.userId));
+  check(await ctx.sb.from("wk_wishlist").upsert(wishlistRow(w, ctx.userId)));
 }
 
 export async function deleteWishlistItem(id: string) {
   const ctx = await withUser();
   if (!ctx) return;
-  await ctx.sb.from("wk_wishlist").delete().eq("id", id);
+  check(await ctx.sb.from("wk_wishlist").delete().eq("id", id));
 }
 
 export interface CloudSnapshot {
@@ -223,6 +232,37 @@ export async function pullAll(): Promise<CloudSnapshot | null> {
     services: (s.data ?? []).map(toService),
     wishlist: (wl.data ?? []).map(toWishlist),
   };
+}
+
+export type DeleteTable = "watches" | "measurements" | "services" | "wishlist";
+
+/** A deletion made on this device that the cloud has not yet confirmed. */
+export interface PendingDelete {
+  table: DeleteTable;
+  id: string;
+}
+
+// children before watches, though the watch FK cascades anyway
+const DELETE_TABLES: [DeleteTable, string][] = [
+  ["measurements", "wk_measurements"],
+  ["services", "wk_services"],
+  ["wishlist", "wk_wishlist"],
+  ["watches", "wk_watches"],
+];
+
+/** Apply remembered deletions. Throws so the caller keeps them for next time. */
+export async function pushDeletes(deletes: PendingDelete[]): Promise<void> {
+  if (!deletes.length) return;
+  const ctx = await withUser();
+  if (!ctx) return;
+  const CHUNK = 200;
+  for (const [kind, table] of DELETE_TABLES) {
+    const ids = deletes.filter((d) => d.table === kind).map((d) => d.id);
+    for (let i = 0; i < ids.length; i += CHUNK) {
+      const { error } = await ctx.sb.from(table).delete().in("id", ids.slice(i, i + CHUNK));
+      if (error) throw new Error(`${table}: ${error.message}`);
+    }
+  }
 }
 
 /** Upload records in chunks. Throws on the first failure so nothing is assumed synced. */

@@ -30,9 +30,14 @@ function downloadFile(name: string, mime: string, content: string) {
   URL.revokeObjectURL(url);
 }
 
-/** RFC4180 field: quote when it contains a comma, quote or newline. */
+/**
+ * RFC4180 field: quote when it contains a comma, quote or newline. Free text
+ * that a spreadsheet would run as a formula ("=…", "+…", "-…", "@…") is
+ * prefixed with an apostrophe; real numbers such as "-3.2" are left alone.
+ */
 export function csvField(v: unknown): string {
-  const s = v == null ? "" : String(v);
+  let s = v == null ? "" : String(v);
+  if (/^[=+\-@\t\r]/.test(s) && !Number.isFinite(Number(s))) s = `'${s}`;
   return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 

@@ -27,7 +27,7 @@ export function rateSpecFor(watch: Watch): RateSpec | null {
       source: watch.rateSpecSource ?? "Custom specification",
     };
 
-  const byCaliber = specForCaliber(watch.caliber, watch.coscCertified);
+  const byCaliber = specForCaliber(watch.caliber, watch.coscCertified, watch.brand);
   if (byCaliber) return byCaliber;
 
   // No caliber recorded — look the model up in the catalog and use its
@@ -43,7 +43,7 @@ export function rateSpecFor(watch: Watch): RateSpec | null {
       (!!m.reference && m.reference.toLowerCase() === q)
     );
   });
-  if (known?.caliber) return specForCaliber(known.caliber, watch.coscCertified);
+  if (known?.caliber) return specForCaliber(known.caliber, watch.coscCertified, watch.brand);
 
   return specForCaliber(undefined, watch.coscCertified);
 }

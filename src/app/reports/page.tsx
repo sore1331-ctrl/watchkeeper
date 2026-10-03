@@ -108,6 +108,7 @@ export default function ReportsPage() {
     download("watchkeeper-export.json", "application/json", JSON.stringify({
       exportedAt: new Date().toISOString(),
       watches: store.watches, measurements: store.measurements, services: store.services,
+      wishlist: store.wishlist, settings: store.settings,
     }, null, 2));
 
   const exportCollectionCsv = () => {

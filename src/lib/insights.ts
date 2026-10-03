@@ -39,7 +39,10 @@ export function generateInsights(
   }
 
   // Stability change: last 30d vs previous 30d
-  const end = +new Date(stats.samples.at(-1)!.date);
+  // Seven readings need not yield a single rate sample (all logged within the
+  // hour, all time corrections) — the comparisons below then simply find nothing.
+  const lastSample = stats.samples.at(-1);
+  const end = lastSample ? +new Date(lastSample.date) : 0;
   const rec = stats.samples.filter((s) => +new Date(s.date) > end - 30 * DAY_MS);
   const prev = stats.samples.filter(
     (s) => +new Date(s.date) <= end - 30 * DAY_MS && +new Date(s.date) > end - 60 * DAY_MS

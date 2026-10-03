@@ -119,5 +119,22 @@ export function fmtTotal(
     .join(" + ");
 }
 
+/**
+ * Record id. These are primary keys in a table shared by every account, so
+ * they must be unguessable and never repeat between users.
+ */
 export const uid = () =>
-  `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
+  typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
+
+/** A link the user typed, if it is an ordinary web address — otherwise null. */
+export function safeHttpUrl(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  try {
+    const u = new URL(raw.trim());
+    return u.protocol === "http:" || u.protocol === "https:" ? u.href : null;
+  } catch {
+    return null;
+  }
+}

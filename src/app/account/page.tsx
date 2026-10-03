@@ -2,9 +2,9 @@
 
 // ─── Account: sign in / sign up, sync status, backup ────────────────────────
 
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import {
-  AlertTriangle, Check, Cloud, CloudOff, Download, LogOut, RefreshCw, ShieldCheck,
+  AlertTriangle, Check, Cloud, CloudOff, Download, LogOut, RefreshCw, ShieldCheck, Upload,
 } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { Button, Card, Input, Label, Skeleton } from "@/components/ui";
@@ -24,7 +24,7 @@ function download(name: string, content: string) {
 export default function AccountPage() {
   const {
     ready, supabaseConfigured, user, sync, signIn, signUp, signOut, syncNow,
-    exportBackup, watches, measurements, services, demo,
+    exportBackup, importBackup, watches, measurements, services, demo,
   } = useStore();
 
   const [mode, setMode] = useState<"in" | "up">("in");
@@ -34,7 +34,22 @@ export default function AccountPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
+  const fileInput = useRef<HTMLInputElement>(null);
+  const [restoreNote, setRestoreNote] = useState<{ ok: boolean; text: string } | null>(null);
+
   if (!ready) return <Skeleton className="h-96" />;
+
+  const restore = async (file: File) => {
+    try {
+      const n = importBackup(await file.text());
+      setRestoreNote({
+        ok: true,
+        text: `Restored ${n.watches} watches, ${n.measurements} measurements, ${n.services} service records and ${n.wishlist} wishlist items. Nothing already on this device was removed.`,
+      });
+    } catch (err) {
+      setRestoreNote({ ok: false, text: err instanceof Error ? err.message : "Could not read that file." });
+    }
+  };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -85,13 +100,33 @@ export default function AccountPage() {
             <p className="text-muted">
               {watches.length} watches · {measurements.length} measurements ·{" "}
               {services.length} service records. A snapshot is saved automatically
-              before every sync.
+              before any sync that changes what is on this device.
             </p>
           </div>
         </div>
-        <Button variant="secondary" size="sm" onClick={backupNow}>
-          <Download className="h-3.5 w-3.5" /> Download backup
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="secondary" size="sm" onClick={backupNow}>
+            <Download className="h-3.5 w-3.5" /> Download backup
+          </Button>
+          <Button variant="secondary" size="sm" onClick={() => fileInput.current?.click()}>
+            <Upload className="h-3.5 w-3.5" /> Restore
+          </Button>
+          <input
+            ref={fileInput} type="file" accept="application/json,.json" className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              e.target.value = "";
+              if (file) void restore(file);
+            }}
+          />
+        </div>
+        {restoreNote && (
+          <p className={`w-full rounded-lg px-3 py-2 text-xs ${
+            restoreNote.ok ? "bg-positive/10 text-positive" : "bg-critical/10 text-critical"
+          }`}>
+            {restoreNote.text}
+          </p>
+        )}
       </Card>
 
       {!supabaseConfigured ? (
@@ -186,10 +221,12 @@ export default function AccountPage() {
             <div>
               <Label>Password</Label>
               <Input
-                type="password" value={password} required minLength={6}
+                // the length rule applies to new passwords only, so an existing
+                // shorter one can still sign in
+                type="password" value={password} required minLength={mode === "up" ? 10 : undefined}
                 autoComplete={mode === "up" ? "new-password" : "current-password"}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="At least 6 characters"
+                placeholder={mode === "up" ? "At least 10 characters" : "Your password"}
               />
             </div>
             {error && (

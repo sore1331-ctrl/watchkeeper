@@ -28,17 +28,22 @@ export interface RateSpec {
   source: string;
 }
 
-const CALIBER_SPECS: { match: RegExp; spec: RateSpec }[] = [
+// `brands` limits a pattern to the makers that use that numbering: "3120" is
+// an Audemars Piguet caliber, not a Rolex, whatever the digits look like.
+// Patterns without it are movements sold to many brands.
+const CALIBER_SPECS: { match: RegExp; brands?: string[]; spec: RateSpec }[] = [
   // Rolex — Superlative Chronometer (after casing)
-  { match: /^(31\d\d|32\d\d|41\d\d|21\d\d)$/i, spec: { min: -2, max: 2, source: "Rolex Superlative Chronometer" } },
+  { match: /^(31\d\d|32\d\d|41\d\d|21\d\d)$/i, brands: ["rolex"], spec: { min: -2, max: 2, source: "Rolex Superlative Chronometer" } },
   // Omega — METAS Master Chronometer
-  { match: /^(88\d\d|89\d\d|3861|3220)$/i, spec: { min: 0, max: 5, source: "METAS Master Chronometer" } },
+  { match: /^(88\d\d|89\d\d|3861)$/i, brands: ["omega"], spec: { min: 0, max: 5, source: "METAS Master Chronometer" } },
   // Tudor Manufacture
-  { match: /^MT\d{4}/i, spec: { min: -2, max: 4, source: "Tudor Manufacture (COSC)" } },
+  { match: /^MT\d{4}/i, brands: ["tudor"], spec: { min: -2, max: 4, source: "Tudor Manufacture (COSC)" } },
   // Grand Seiko 9F quartz — ±10 s/year
-  { match: /^9F\d\d$/i, spec: { min: -0.03, max: 0.03, source: "Grand Seiko 9F (±10 s/year)" } },
+  { match: /^9F\d\d$/i, brands: ["grand seiko", "seiko"], spec: { min: -0.03, max: 0.03, source: "Grand Seiko 9F (±10 s/year)" } },
+  // Grand Seiko Spring Drive — ±15 s/month; no escapement, so no beat rate
+  { match: /^9R/i, brands: ["grand seiko", "seiko"], spec: { min: -1, max: 1, source: "Grand Seiko Spring Drive (±1 s/day)" } },
   // Grand Seiko mechanical 9S — static rate
-  { match: /^9S/i, spec: { min: -3, max: 5, source: "Grand Seiko 9S standard" } },
+  { match: /^9S/i, brands: ["grand seiko", "seiko"], spec: { min: -3, max: 5, source: "Grand Seiko 9S standard" } },
   // Seiko workhorses
   { match: /^4R\d\d/i, spec: { min: -35, max: 45, source: "Seiko 4R3x specification" } },
   { match: /^6R\d\d/i, spec: { min: -15, max: 25, source: "Seiko 6R3x specification" } },
@@ -55,10 +60,14 @@ const COSC_SPEC: RateSpec = { min: -4, max: 6, source: "COSC chronometer" };
  * Best-known rate tolerance for a caliber. COSC certification wins, since a
  * certified movement is tested to that band regardless of its base caliber.
  */
-export function specForCaliber(caliber?: string, coscCertified?: boolean): RateSpec | null {
+export function specForCaliber(
+  caliber?: string, coscCertified?: boolean, brand?: string
+): RateSpec | null {
   const c = caliber?.trim();
+  const b = brand?.trim().toLowerCase() ?? "";
   if (c) {
-    for (const { match, spec } of CALIBER_SPECS) {
+    for (const { match, brands, spec } of CALIBER_SPECS) {
+      if (brands && !brands.includes(b)) continue;
       if (match.test(c)) {
         // A certified chronometer is held to the tighter of the two bands
         if (coscCertified && spec.max - spec.min > COSC_SPEC.max - COSC_SPEC.min) return COSC_SPEC;
@@ -89,7 +98,7 @@ export const WATCH_MODELS: Record<string, CatalogModel[]> = {
     { model: "GMT-Master II", reference: "126710BLNR", movementType: "automatic", caliber: "3285", beatRate: 28800, powerReserveHours: 70, jewels: 31, cosc: true },
     { model: "Explorer 36", reference: "124270", movementType: "automatic", caliber: "3230", beatRate: 28800, powerReserveHours: 70, jewels: 31, cosc: true },
     { model: "Explorer II", reference: "226570", movementType: "automatic", caliber: "3285", beatRate: 28800, powerReserveHours: 70, jewels: 31, cosc: true },
-    { model: "Daytona", reference: "126500LN", movementType: "automatic", caliber: "4131", beatRate: 28800, powerReserveHours: 72, jewels: 39, cosc: true },
+    { model: "Daytona", reference: "126500LN", movementType: "automatic", caliber: "4131", beatRate: 28800, powerReserveHours: 72, jewels: 47, cosc: true },
     { model: "Oyster Perpetual 36", reference: "126000", movementType: "automatic", caliber: "3230", beatRate: 28800, powerReserveHours: 70, jewels: 31, cosc: true },
     { model: "Sea-Dweller", reference: "126600", movementType: "automatic", caliber: "3235", beatRate: 28800, powerReserveHours: 70, jewels: 31, cosc: true },
   ],
@@ -119,7 +128,7 @@ export const WATCH_MODELS: Record<string, CatalogModel[]> = {
   ],
   "Grand Seiko": [
     { model: "SBGX261", reference: "SBGX261", movementType: "quartz", caliber: "9F62", jewels: 9 },
-    { model: "SBGA211 \"Snowflake\"", reference: "SBGA211", movementType: "automatic", caliber: "9R65", beatRate: 28800, powerReserveHours: 72, jewels: 30 },
+    { model: "SBGA211 \"Snowflake\"", reference: "SBGA211", movementType: "automatic", caliber: "9R65", powerReserveHours: 72, jewels: 30 },
     { model: "SBGW231", reference: "SBGW231", movementType: "manual", caliber: "9S64", beatRate: 28800, powerReserveHours: 72, jewels: 24 },
     { model: "SBGH201", reference: "SBGH201", movementType: "automatic", caliber: "9S85", beatRate: 36000, powerReserveHours: 55, jewels: 37 },
     { model: "SBGM221", reference: "SBGM221", movementType: "automatic", caliber: "9S66", beatRate: 28800, powerReserveHours: 72, jewels: 35 },
@@ -256,7 +265,7 @@ export const WATCH_MODELS: Record<string, CatalogModel[]> = {
   ],
   Baltic: [
     { model: "Aquascaphe Classic", movementType: "automatic", caliber: "Miyota 9039", beatRate: 28800, powerReserveHours: 42, jewels: 24 },
-    { model: "HMS 003", movementType: "automatic", caliber: "Miyota 8315", beatRate: 21600, powerReserveHours: 60, jewels: 26 },
+    { model: "HMS 003", movementType: "automatic", caliber: "Miyota 8315", beatRate: 21600, powerReserveHours: 60, jewels: 21 },
     { model: "MR01", movementType: "automatic", caliber: "Hangzhou 5000A", beatRate: 21600, powerReserveHours: 40 },
   ],
   Squale: [
