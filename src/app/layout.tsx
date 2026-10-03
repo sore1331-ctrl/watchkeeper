@@ -31,9 +31,9 @@ export const viewport: Viewport = {
   ],
 };
 
-// Applies the saved theme before first paint. Without it the page always
+// Applies the saved theme and accent before first paint. Without it the page always
 // drew dark and then flipped for anyone who had chosen light.
-const themeInit = `try{var t=localStorage.getItem("wk-theme");if(t==="light"||(t==="system"&&!matchMedia("(prefers-color-scheme: dark)").matches))document.documentElement.classList.remove("dark")}catch(e){}`;
+const themeInit = `try{var d=document.documentElement,t=localStorage.getItem("wk-theme");if(t==="light"||(t==="system"&&!matchMedia("(prefers-color-scheme: dark)").matches))d.classList.remove("dark");if(localStorage.getItem("wk-accent")==="green")d.dataset.accent="green"}catch(e){}`;
 
 export default function RootLayout({
   children,

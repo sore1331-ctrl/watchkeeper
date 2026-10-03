@@ -38,6 +38,11 @@
   --grade-critical: #b3261e;
 }
 
+/* Optional light-theme accent, chosen in Settings. The dark theme keeps brass. */
+:root[data-accent="green"]:not(.dark) {
+  --accent: #1f6b4a;
+}
+
 .dark {
   --background: #0c0e11;
   --surface: #14171c;

@@ -11,11 +11,12 @@ import { SectionTitle } from "@/components/widgets";
 import { getSupabase } from "@/lib/supabase/client";
 import { CURRENCIES } from "@/lib/utils";
 import type { RestingHandling } from "@/lib/types";
-import { useTheme, type ThemeMode } from "@/lib/theme";
+import { useLightAccent, useTheme, type LightAccent, type ThemeMode } from "@/lib/theme";
 
 export default function SettingsPage() {
   const { ready, settings, updateSettings, resetDemoData, demo, cloudSynced } = useStore();
   const { mode, setMode } = useTheme();
+  const { accent, setAccent } = useLightAccent();
   if (!ready) return <Skeleton className="h-96" />;
 
   const supabaseConfigured = !!getSupabase();
@@ -32,6 +33,18 @@ export default function SettingsPage() {
             <option value="light">Light</option>
             <option value="system">Match this device</option>
           </Select>
+        </div>
+        <div>
+          <Label>Light theme accent</Label>
+          <Select value={accent} onChange={(e) => setAccent(e.target.value as LightAccent)}>
+            <option value="navy">Navy ink</option>
+            <option value="green">Racing green</option>
+          </Select>
+          <p className="mt-1 text-[11px] text-faint">
+            The colour of links and main buttons in the light theme. Racing green sits close
+            to the green used for &ldquo;good&rdquo; readings; navy keeps the two apart. The dark theme
+            always uses brass.
+          </p>
         </div>
         <div>
           <Label>Currency</Label>

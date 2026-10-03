@@ -41,6 +41,54 @@ function subscribe(onChange: () => void) {
   };
 }
 
+// ── Light-theme accent ──────────────────────────────────────────────────────
+
+export type LightAccent = "navy" | "green";
+
+const ACCENT_KEY = "wk-accent";
+const ACCENT_EVENT = "wk-accent-change";
+
+function readAccent(): LightAccent {
+  try {
+    return window.localStorage.getItem(ACCENT_KEY) === "green" ? "green" : "navy";
+  } catch {
+    return "navy";
+  }
+}
+
+function applyAccent(accent: LightAccent) {
+  // navy is the stylesheet's default, so it needs no attribute
+  if (accent === "green") document.documentElement.dataset.accent = "green";
+  else delete document.documentElement.dataset.accent;
+}
+
+function subscribeAccent(onChange: () => void) {
+  const update = () => {
+    applyAccent(readAccent());
+    onChange();
+  };
+  window.addEventListener(ACCENT_EVENT, update);
+  window.addEventListener("storage", update);
+  return () => {
+    window.removeEventListener(ACCENT_EVENT, update);
+    window.removeEventListener("storage", update);
+  };
+}
+
+export function useLightAccent() {
+  const accent = useSyncExternalStore(subscribeAccent, readAccent, () => "navy" as LightAccent);
+  const setAccent = useCallback((next: LightAccent) => {
+    try {
+      window.localStorage.setItem(ACCENT_KEY, next);
+    } catch {
+      /* private mode — the choice still applies for this visit */
+    }
+    applyAccent(next);
+    window.dispatchEvent(new Event(ACCENT_EVENT));
+  }, []);
+  return { accent, setAccent };
+}
+
 export function useTheme() {
   const mode = useSyncExternalStore(subscribe, readMode, () => "dark" as ThemeMode);
   const dark = useSyncExternalStore(subscribe, () => resolvesDark(readMode()), () => true);
