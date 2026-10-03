@@ -1,7 +1,7 @@
 // ─── Smart insights + notification engine ───────────────────────────────────
 
 import type { Insight, Measurement, Notification, RestingHandling, Watch, ServiceRecord } from "./types";
-import { analyzeConditions, computeStats, detectAnomaly, mean, stdDev, type WatchStats } from "./stats";
+import { analyzeConditions, computeStats, detectAnomaly, meanRate, stdDev, type RateSample, type WatchStats } from "./stats";
 import { accuracyGrade, batteryRemaining, daysSince, expectedScatter, healthScore, lastRegulationDate, lastServiceDate, MIN_MEASUREMENTS_FOR_GRADE, nextServiceEstimate, rateSpecFor } from "./grades";
 
 const DAY_MS = 86_400_000;
@@ -30,7 +30,9 @@ export function generateInsights(
   services: ServiceRecord[],
   restingReadings: RestingHandling = "separate"
 ): Insight[] {
-  const stats = computeStats(measurements, { powerReserveHours: watch.powerReserveHours, restingReadings });
+  const stats = computeStats(measurements, {
+    powerReserveHours: watch.powerReserveHours, movementType: watch.movementType, restingReadings,
+  });
   const out: Insight[] = [];
   const name = `${watch.brand} ${watch.model}`;
   // Same evidence bar as grading: below it, one stray reading dominates.
@@ -78,8 +80,8 @@ export function generateInsights(
           detail: `Rate σ improved from ±${sdPrev.toFixed(1)} to ±${sdRec.toFixed(1)} s/d${basis}.`,
         });
     }
-    const avgRec = mean(rec.map((s) => s.spd));
-    const avgPrev = mean(prev.map((s) => s.spd));
+    const avgRec = meanRate(rec);
+    const avgPrev = meanRate(prev);
     const delta = avgRec - avgPrev;
     const signed = (v: number) => `${v > 0 ? "+" : ""}${v.toFixed(1)}`;
     if (Math.abs(delta) >= 0.8)
@@ -139,16 +141,16 @@ export function generateInsights(
   }
 
   // Position analysis
-  const byPos = new Map<string, number[]>();
+  const byPos = new Map<string, RateSample[]>();
   for (const s of stats.samples) {
     if (!s.position) continue;
     if (!byPos.has(s.position)) byPos.set(s.position, []);
-    byPos.get(s.position)!.push(s.spd);
+    byPos.get(s.position)!.push(s);
   }
   const posEntries = [...byPos.entries()].filter(([, v]) => v.length >= 3);
   if (posEntries.length >= 2) {
     const ranked = posEntries
-      .map(([p, v]) => ({ p, dev: Math.abs(mean(v)) }))
+      .map(([p, v]) => ({ p, dev: Math.abs(meanRate(v)) }))
       .sort((a, b) => a.dev - b.dev);
     const best = ranked[0];
     const worst = ranked[ranked.length - 1];
@@ -178,8 +180,8 @@ export function generateInsights(
   const lowPR = stats.samples.filter((s) => s.powerReservePct != null && s.powerReservePct < 35);
   const highPR = stats.samples.filter((s) => s.powerReservePct != null && s.powerReservePct >= 65);
   if (watch.movementType !== "quartz" && lowPR.length >= 3 && highPR.length >= 3) {
-    const dLow = mean(lowPR.map((s) => s.spd));
-    const dHigh = mean(highPR.map((s) => s.spd));
+    const dLow = meanRate(lowPR);
+    const dHigh = meanRate(highPR);
     if (Math.abs(dLow - dHigh) > 1.5)
       out.push({
         id: nid(), watchId: watch.id, kind: "power", severity: "neutral",
@@ -233,7 +235,9 @@ export function generateNotifications(
   for (const w of watches.filter((x) => !x.archived)) {
     const ms = measurementsByWatch.get(w.id) ?? [];
     const svcs = servicesByWatch.get(w.id) ?? [];
-    const stats = computeStats(ms, { powerReserveHours: w.powerReserveHours, restingReadings });
+    const stats = computeStats(ms, {
+      powerReserveHours: w.powerReserveHours, movementType: w.movementType, restingReadings,
+    });
     const name = `${w.brand} ${w.model}`;
 
     const lastDays = daysSince(stats.lastMeasuredAt);

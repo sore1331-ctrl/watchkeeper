@@ -273,12 +273,13 @@ export function WearFrequencyChart({
 
 /** Accuracy heatmap — calendar-style grid of daily rate. */
 export function AccuracyHeatmap({
-  samples, weeks = 20,
+  samples, weeks = 20, spec,
 }: {
   samples: { date: string; spd: number }[];
   weeks?: number;
+  /** the movement's tolerance; without it a generic mechanical scale is used */
+  spec?: { min: number; max: number } | null;
 }) {
-  const DAY = 86_400_000;
   const now = new Date();
   const end = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const byDay = new Map<string, number>();
@@ -289,19 +290,31 @@ export function AccuracyHeatmap({
   for (let w = weeks - 1; w >= 0; w--) {
     const col: { date: Date; spd: number | undefined }[] = [];
     for (let d = 0; d < 7; d++) {
-      const date = new Date(+end - (endDow - d) * DAY - w * 7 * DAY);
+      // calendar arithmetic, not milliseconds: a day is 23 or 25 hours twice a year
+      const date = new Date(end.getFullYear(), end.getMonth(), end.getDate() - (endDow - d) - w * 7);
       col.push({ date, spd: byDay.get(date.toDateString()) });
     }
     cells.push(col);
   }
-  const colorFor = (spd: number | undefined) => {
-    if (spd === undefined) return "var(--surface-2)";
+  // Four steps. With a spec they are positions in the watch's own band — a
+  // movement built to −15/+25 running +11 is in spec and must not be painted
+  // as a bad day. Without one, a generic mechanical scale.
+  const MIXED = "color-mix(in oklab, var(--positive) 55%, var(--warning))";
+  const level = (spd: number): 0 | 1 | 2 | 3 => {
+    if (spec) {
+      const half = (spec.max - spec.min) / 2 || 1;
+      const d = Math.abs(spd - (spec.min + spec.max) / 2) / half;
+      return d <= 0.5 ? 0 : d <= 1 ? 1 : d <= 1.5 ? 2 : 3;
+    }
     const a = Math.abs(spd);
-    if (a <= 2) return "var(--positive)";
-    if (a <= 6) return "color-mix(in oklab, var(--positive) 55%, var(--warning))";
-    if (a <= 12) return "var(--warning)";
-    return "var(--critical)";
+    return a <= 2 ? 0 : a <= 6 ? 1 : a <= 12 ? 2 : 3;
   };
+  const COLORS = ["var(--positive)", MIXED, "var(--warning)", "var(--critical)"];
+  const LEGEND = spec
+    ? ["middle of spec", "in spec", "just outside", "well outside"]
+    : ["≤2 s/d", "≤6", "≤12", ">12"];
+  const colorFor = (spd: number | undefined) =>
+    spd === undefined ? "var(--surface-2)" : COLORS[level(spd)];
   return (
     <div>
       <div className="flex gap-1 overflow-x-auto pb-1">
@@ -322,10 +335,11 @@ export function AccuracyHeatmap({
         ))}
       </div>
       <div className="mt-2 flex items-center gap-3 text-[10px] text-muted">
-        <span className="flex items-center gap-1"><i className="h-2.5 w-2.5 rounded-[2px]" style={{ background: "var(--positive)" }} /> ≤2 s/d</span>
-        <span className="flex items-center gap-1"><i className="h-2.5 w-2.5 rounded-[2px]" style={{ background: "color-mix(in oklab, var(--positive) 55%, var(--warning))" }} /> ≤6</span>
-        <span className="flex items-center gap-1"><i className="h-2.5 w-2.5 rounded-[2px]" style={{ background: "var(--warning)" }} /> ≤12</span>
-        <span className="flex items-center gap-1"><i className="h-2.5 w-2.5 rounded-[2px]" style={{ background: "var(--critical)" }} /> &gt;12</span>
+        {LEGEND.map((text, i) => (
+          <span key={text} className="flex items-center gap-1">
+            <i className="h-2.5 w-2.5 rounded-[2px]" style={{ background: COLORS[i] }} /> {text}
+          </span>
+        ))}
         <span className="flex items-center gap-1"><i className="h-2.5 w-2.5 rounded-[2px] bg-surface-2" /> no data</span>
       </div>
     </div>

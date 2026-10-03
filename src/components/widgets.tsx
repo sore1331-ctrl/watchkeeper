@@ -109,9 +109,11 @@ export function PendingBadge({ count, explain = true }: { count: number; explain
 }
 
 export function GradeBadge({
-  grade, movement = "automatic", count, explain = true, spec, avgSpd,
+  grade, movement = "automatic", count, explain = true, spec, avgSpd, note,
 }: {
   grade: AccuracyGrade | null;
+  /** why there is no grade although there are enough readings */
+  note?: string | null;
   movement?: MovementType;
   /** measurements recorded; enables the "collecting data" state */
   count?: number;
@@ -123,6 +125,12 @@ export function GradeBadge({
   if (!grade) {
     if (count != null && count < MIN_MEASUREMENTS_FOR_GRADE)
       return <PendingBadge count={count} explain={explain} />;
+    if (note) {
+      const unresolved = <Badge color="var(--muted)">Too fine to grade</Badge>;
+      return explain ? (
+        <InfoTip content={<p className="text-muted">{note}</p>}>{unresolved}</InfoTip>
+      ) : unresolved;
+    }
     return <Badge color="var(--faint)">No data</Badge>;
   }
   const badge = <Badge color={GRADE_COLORS[grade]}>{grade}</Badge>;

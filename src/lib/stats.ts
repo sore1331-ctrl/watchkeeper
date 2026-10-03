@@ -2,7 +2,7 @@
 // All rate math works on "daily rate" samples: the change in offset between two
 // consecutive measurements, normalized to seconds/day.
 
-import type { Measurement, RestingHandling } from "./types";
+import type { Measurement, MovementType, RestingHandling } from "./types";
 
 export interface RateSample {
   /** ISO date of the later measurement */
@@ -28,9 +28,10 @@ export interface WatchStats {
   /** measurements recorded, including any excluded from rate analysis */
   count: number;
   /**
-   * Measurements that actually contribute to the rate. Time corrections and
-   * stopped-watch intervals produce no sample, so this is what grading must
-   * wait on — ten readings that are nine resets are still one data point.
+   * Measurements behind the headline figures — the ones a grade is actually
+   * judged on. Time corrections and stopped-watch intervals produce no
+   * sample, and resting intervals may be kept out of the headline, so this is
+   * what grading must wait on, not the number of readings taken.
    */
   gradableCount: number;
   currentOffset: number | null;
@@ -67,6 +68,13 @@ export interface WatchStats {
   driftSignificant: boolean;
   /** slope of |spd| over time — accuracy getting better (<0) or worse (>0) */
   accuracyTrend: number | null;
+  /** whether that slope stands out from the scatter (|t| ≥ 2) */
+  accuracyTrendSignificant: boolean;
+  /**
+   * Rate used to forecast the offset: everything the watch did over the last
+   * 30 days, worn and resting, since that is what moves the hands.
+   */
+  forecastRate: number | null;
   /** 0-100 — closeness to ±0 s/d */
   performanceScore: number | null;
   /** 0-100 — consistency of the rate */
@@ -81,6 +89,7 @@ export interface WatchStats {
   predicted: { d7: number; d14: number; d30: number; d90: number } | null;
   /** ratio of samples within 1 stddev of mean */
   stabilityPct: number | null;
+  /** share of elapsed time the watch was worn (0–1), over every interval */
   wearRatio: number | null;
   /** every valid sample — charts and the position breakdown use all of them */
   samples: RateSample[];
@@ -116,6 +125,57 @@ export function variance(xs: number[]): number {
 
 export function stdDev(xs: number[]): number {
   return Math.sqrt(variance(xs));
+}
+
+/**
+ * Average rate over a set of intervals: seconds gained ÷ time elapsed.
+ *
+ * That is each interval's rate weighted by its length. A plain mean lets a
+ * one-hour interval count as much as a four-day one, and weighting by length
+ * squared (as an earlier version did) lets one long gap drown out a week of
+ * daily readings. Only this version answers "how fast does it actually run".
+ */
+export function meanRate(samples: { spd: number; gapHours: number }[]): number {
+  let gain = 0;
+  let hours = 0;
+  for (const s of samples) {
+    gain += s.spd * s.gapHours;
+    hours += s.gapHours;
+  }
+  return hours > 0 ? gain / hours : mean(samples.map((s) => s.spd));
+}
+
+/** Two-sided 95% Student-t critical value. 1.96 is only right for large samples. */
+const T95 = [
+  12.706, 4.303, 3.182, 2.776, 2.571, 2.447, 2.365, 2.306, 2.262, 2.228,
+  2.201, 2.179, 2.16, 2.145, 2.131, 2.12, 2.11, 2.101, 2.093, 2.086,
+  2.08, 2.074, 2.069, 2.064, 2.06, 2.056, 2.052, 2.048, 2.045, 2.042,
+];
+export function tCritical95(degreesOfFreedom: number): number {
+  const df = Math.max(1, Math.floor(degreesOfFreedom));
+  return df <= T95.length ? T95[df - 1] : 1.96 + 2.5 / df;
+}
+
+/**
+ * Share of elapsed time the watch was worn (0–1). Every interval counts, by
+ * its length — including those left out of the rate, which are mostly the
+ * unworn ones. Counting only the intervals that survived made a watch worn a
+ * fifth of the time read as worn all of it.
+ */
+export function wearShare(measurements: Measurement[], sinceMs = -Infinity): number | null {
+  const ms = [...measurements].sort(
+    (a, b) => +new Date(a.measuredAt) - +new Date(b.measuredAt)
+  );
+  let worn = 0;
+  let total = 0;
+  for (let i = 1; i < ms.length; i++) {
+    const end = +new Date(ms[i].measuredAt);
+    if (end <= sinceMs) continue;
+    const gap = end - +new Date(ms[i - 1].measuredAt);
+    total += gap;
+    if (ms[i - 1].wornToday) worn += gap;
+  }
+  return total > 0 ? worn / total : null;
 }
 
 /**
@@ -225,94 +285,122 @@ export interface ExcludedSample {
   reason: "time-corrected" | "implausible" | "ran-down" | "excluded-by-you";
 }
 
+/** What is known about the movement, for telling a wound-down interval from a rate. */
+export interface RateOptions {
+  /** the watch's rated reserve, hours */
+  powerReserveHours?: number;
+  movementType?: MovementType;
+}
+
 /**
- * Did the mainspring run out during this interval?
+ * Could the mainspring have run out during this interval?
  *
- * A watch left unworn for longer than its power reserve stops. Long before it
- * stops, falling torque drops the balance amplitude and the watch runs
- * progressively slower. Either way the interval measures a watch that wasn't
- * running properly, not the rate of a healthy movement — so it is no more a
- * timekeeping reading than a manual correction is.
+ * Only an automatic winds down for want of wearing: a hand-wound watch is
+ * wound whether or not it is on a wrist, so "unworn for longer than the
+ * reserve" says nothing about it. This only marks the interval as a
+ * candidate — see classify() for the evidence it then has to show.
  */
-function ranDown(
-  prev: Measurement,
-  gapHours: number,
-  powerReserveHours?: number
-): boolean {
-  if (!powerReserveHours || prev.wornToday) return false;
+function couldHaveRunDown(prev: Measurement, gapHours: number, opts: RateOptions): boolean {
+  if (opts.movementType !== "automatic" || !opts.powerReserveHours || prev.wornToday) return false;
   // reserve remaining when it was set down, if recorded
   const remaining =
     prev.powerReservePct != null
-      ? powerReserveHours * (prev.powerReservePct / 100)
-      : powerReserveHours;
+      ? opts.powerReserveHours * (prev.powerReservePct / 100)
+      : opts.powerReserveHours;
   return gapHours > remaining;
 }
 
-/** Intervals that were not counted as drift, with why. */
-export function excludedSamples(
-  measurements: Measurement[],
-  powerReserveHours?: number
-): ExcludedSample[] {
-  const ms = [...measurements].sort(
-    (a, b) => +new Date(a.measuredAt) - +new Date(b.measuredAt)
-  );
-  const out: ExcludedSample[] = [];
-  for (let i = 1; i < ms.length; i++) {
-    const gapMs = +new Date(ms[i].measuredAt) - +new Date(ms[i - 1].measuredAt);
-    if (gapMs < 3_600_000) continue;
-    const spd = (ms[i].offsetSeconds - ms[i - 1].offsetSeconds) / (gapMs / DAY_MS);
-    if (ms[i].excludeFromRate) out.push({ date: ms[i].measuredAt, spd, reason: "excluded-by-you" });
-    else if (ms[i].timeAdjusted) out.push({ date: ms[i].measuredAt, spd, reason: "time-corrected" });
-    else if (Math.abs(spd) > IMPLAUSIBLE_SPD)
-      out.push({ date: ms[i].measuredAt, spd, reason: "implausible" });
-    else if (ranDown(ms[i - 1], gapMs / 3_600_000, powerReserveHours))
-      out.push({ date: ms[i].measuredAt, spd, reason: "ran-down" });
-  }
-  return out;
-}
+/** How far below its usual rate (s/d) an interval must run before "it wound down" is believed. */
+const RUN_DOWN_MIN_LOSS = 5;
 
-/** Convert consecutive measurements into normalized seconds/day samples. */
-export function rateSamples(
+/**
+ * Sort every interval into a rate sample or an exclusion, with the reason.
+ *
+ * A watch that actually stopped, or ran on a nearly empty spring, loses time
+ * against its usual rate. So an interval is only set aside as "ran down" when
+ * it both could have (see above) and visibly did: it ran clearly slower than
+ * the watch's other intervals. Excluding on the possibility alone threw away
+ * half the readings of a watch that was merely resting.
+ */
+function classify(
   measurements: Measurement[],
-  powerReserveHours?: number
-): RateSample[] {
+  opts: RateOptions = {}
+): { samples: RateSample[]; excluded: ExcludedSample[] } {
   const ms = [...measurements].sort(
     (a, b) => +new Date(a.measuredAt) - +new Date(b.measuredAt)
   );
-  const out: RateSample[] = [];
+  const kept: { sample: RateSample; candidate: boolean }[] = [];
+  const excluded: ExcludedSample[] = [];
   for (let i = 1; i < ms.length; i++) {
     const prev = ms[i - 1];
     const cur = ms[i];
     const gapMs = +new Date(cur.measuredAt) - +new Date(prev.measuredAt);
     if (gapMs < 3_600_000) continue; // ignore gaps under 1 hour (noise)
+    const gapHours = gapMs / 3_600_000;
+    const spd = (cur.offsetSeconds - prev.offsetSeconds) / (gapMs / DAY_MS);
 
+    // You told us this period isn't representative.
+    if (cur.excludeFromRate) {
+      excluded.push({ date: cur.measuredAt, spd, reason: "excluded-by-you" });
+      continue;
+    }
     // The watch was corrected across this gap: the offset change is the
     // correction the user made, not how the movement ran. No rate here.
-    if (cur.timeAdjusted) continue;
-    // You told us this period isn't representative.
-    if (cur.excludeFromRate) continue;
-
-    const gapDays = gapMs / DAY_MS;
-    const spd = (cur.offsetSeconds - prev.offsetSeconds) / gapDays;
+    if (cur.timeAdjusted) {
+      excluded.push({ date: cur.measuredAt, spd, reason: "time-corrected" });
+      continue;
+    }
     // Safety net for history recorded before corrections could be flagged:
     // a reset or a stopped watch masquerades as an enormous rate.
-    if (Math.abs(spd) > IMPLAUSIBLE_SPD) continue;
-    // The mainspring ran out somewhere in here — not a rate.
-    if (ranDown(prev, gapMs / 3_600_000, powerReserveHours)) continue;
+    if (Math.abs(spd) > IMPLAUSIBLE_SPD) {
+      excluded.push({ date: cur.measuredAt, spd, reason: "implausible" });
+      continue;
+    }
 
-    out.push({
-      date: cur.measuredAt,
-      spd,
-      offset: cur.offsetSeconds,
-      gapHours: gapMs / 3_600_000,
-      // conditions during the interval = how the watch was left at its start
-      worn: prev.wornToday,
-      position: prev.wornToday ? "on-wrist" : prev.position,
-      temperatureC: prev.temperatureC,
-      powerReservePct: prev.powerReservePct,
+    kept.push({
+      candidate: couldHaveRunDown(prev, gapHours, opts),
+      sample: {
+        date: cur.measuredAt,
+        spd,
+        offset: cur.offsetSeconds,
+        gapHours,
+        // conditions during the interval = how the watch was left at its start
+        worn: prev.wornToday,
+        position: prev.wornToday ? "on-wrist" : prev.position,
+        temperatureC: prev.temperatureC,
+        powerReservePct: prev.powerReservePct,
+      },
     });
   }
-  return out;
+
+  if (kept.some((k) => k.candidate)) {
+    // "usual" is judged from the intervals not under suspicion, when there
+    // are enough of them to say
+    const clear = kept.filter((k) => !k.candidate).map((k) => k.sample.spd);
+    const usual = clear.length >= 3 ? clear : kept.map((k) => k.sample.spd);
+    const floor = median(usual) - Math.max(3 * robustScatter(usual), RUN_DOWN_MIN_LOSS);
+    for (const k of kept) {
+      k.candidate = k.candidate && k.sample.spd < floor;
+      if (k.candidate)
+        excluded.push({ date: k.sample.date, spd: k.sample.spd, reason: "ran-down" });
+    }
+  }
+
+  return {
+    // any still marked as candidates here are the ones that did run down
+    samples: kept.filter((k) => !k.candidate).map((k) => k.sample),
+    excluded: excluded.sort((a, b) => a.date.localeCompare(b.date)),
+  };
+}
+
+/** Intervals that were not counted as drift, with why. */
+export function excludedSamples(measurements: Measurement[], opts: RateOptions = {}): ExcludedSample[] {
+  return classify(measurements, opts).excluded;
+}
+
+/** Convert consecutive measurements into normalized seconds/day samples. */
+export function rateSamples(measurements: Measurement[], opts: RateOptions = {}): RateSample[] {
+  return classify(measurements, opts).samples;
 }
 
 function samplesInWindow(samples: RateSample[], days: number, endMs?: number): RateSample[] {
@@ -327,7 +415,7 @@ export function rollingAverage(samples: RateSample[], windowDays: number): { dat
     const win = samples.filter(
       (x) => +new Date(x.date) > end - windowDays * DAY_MS && +new Date(x.date) <= end
     );
-    return { date: s.date, value: mean(win.map((w) => w.spd)) };
+    return { date: s.date, value: meanRate(win) };
   });
 }
 
@@ -394,14 +482,14 @@ export function analyzeConditions(samples: RateSample[]): ConditionAnalysis | nu
       key,
       label: CONDITION_LABELS[key] ?? key,
       n: xs.length,
-      mean: mean(xs.map((x) => x.spd)),
+      mean: meanRate(xs),
       sd: xs.length >= 2 ? stdDev(xs.map((x) => x.spd)) : 0,
       worn: xs[0].worn,
     }))
     .sort((a, b) => b.n - a.n);
 
   const trusted = groups.filter((g) => g.n >= MIN_PER_CONDITION);
-  const overall = mean(samples.map((s) => s.spd));
+  const overall = meanRate(samples);
   const meanFor = (k: string) =>
     trusted.find((g) => g.key === k)?.mean ?? overall;
 
@@ -433,23 +521,29 @@ export function analyzeConditions(samples: RateSample[]): ConditionAnalysis | nu
   };
 }
 
-/** Worn samples needed before the headline can safely ignore resting ones. */
-const MIN_WORN_FOR_SPLIT = 5;
+/**
+ * Worn samples needed before the headline can safely ignore resting ones.
+ * Six samples is seven measurements — the same bar a grade waits for, so a
+ * worn-only headline is never graded on less than that.
+ */
+const MIN_WORN_FOR_SPLIT = 6;
 
 export function computeStats(
   measurements: Measurement[],
   opts: {
     /** the watch's rated reserve, so wound-down intervals can be spotted */
     powerReserveHours?: number;
+    /** only an automatic winds down for want of wearing */
+    movementType?: MovementType;
     /** how resting (overnight) intervals feed the headline figures */
     restingReadings?: RestingHandling;
   } = {}
 ): WatchStats {
-  const { powerReserveHours, restingReadings = "separate" } = opts;
+  const { powerReserveHours, movementType, restingReadings = "separate" } = opts;
   const ms = [...measurements].sort(
     (a, b) => +new Date(a.measuredAt) - +new Date(b.measuredAt)
   );
-  const samples = rateSamples(ms, powerReserveHours);
+  const { samples, excluded } = classify(ms, { powerReserveHours, movementType });
   const last = ms[ms.length - 1] ?? null;
 
   // Split wrist time from rest. Keeping resting readings out of the headline
@@ -464,7 +558,7 @@ export function computeStats(
 
   const empty: WatchStats = {
     count: ms.length,
-    gradableCount: samples.length ? samples.length + 1 : 0,
+    gradableCount: headlineSamples.length ? headlineSamples.length + 1 : 0,
     currentOffset: last ? last.offsetSeconds : null,
     lastMeasuredAt: last ? last.measuredAt : null,
     todayRate: null, avgSpd: null, medianSpd: null, maxGain: null, maxLoss: null,
@@ -473,16 +567,17 @@ export function computeStats(
     conditions: null, weeklyVariance: null, monthlyVariance: null,
     rolling7: null, rolling30: null, driftTrend: null,
     driftPerMonth: null, driftSignificant: false, accuracyTrend: null,
+    accuracyTrendSignificant: false, forecastRate: null,
     performanceScore: null, stabilityScore: null, consistencyIndex: null,
     confidence95: null, avgSpdError: null, predicted: null,
-    stabilityPct: null, wearRatio: null,
+    stabilityPct: null, wearRatio: wearShare(ms),
     samples,
     headlineSamples,
     headlineBasis,
-    wornRate: wornSamples.length >= 3 ? mean(wornSamples.map((s) => s.spd)) : null,
-    restingRate: restingSamples.length >= 3 ? mean(restingSamples.map((s) => s.spd)) : null,
+    wornRate: wornSamples.length >= 3 ? meanRate(wornSamples) : null,
+    restingRate: restingSamples.length >= 3 ? meanRate(restingSamples) : null,
     restingCount: restingSamples.length,
-    excluded: excludedSamples(measurements, powerReserveHours),
+    excluded,
   };
   if (headlineSamples.length === 0) return empty;
 
@@ -490,25 +585,15 @@ export function computeStats(
   // breakdown still read `samples`, so no reading disappears from view.
   const spds = headlineSamples.map((s) => s.spd);
 
-  // Weight each reading by how precisely it could be measured. A rate taken
-  // over an hour carries far more reading error than one taken over a week,
-  // so treating them as equal lets the noisiest readings pull the average
-  // around. Weights are capped so a single very long interval cannot become
-  // the only reading that counts.
-  const rawWeights = headlineSamples.map((s) => {
-    const u = rateUncertainty(s.gapHours / 24);
-    return Number.isFinite(u) && u > 0 ? 1 / (u * u) : 0;
-  });
-  const medianWeight = median(rawWeights.filter((w) => w > 0)) || 1;
-  const weights = rawWeights.map((w) => Math.min(w, medianWeight * 20));
-  const totalWeight = weights.reduce((a, b) => a + b, 0);
-  const avg =
-    totalWeight > 0
-      ? spds.reduce((a, x, i) => a + x * weights[i], 0) / totalWeight
-      : mean(spds);
+  // Seconds gained ÷ time elapsed — see meanRate().
+  const avg = meanRate(headlineSamples);
   const sd = stdDev(spds);
-  // Uncertainty of that weighted average from reading error alone.
-  const avgSpdError = totalWeight > 0 ? Math.sqrt(1 / totalWeight) : null;
+  // Uncertainty of that average from reading error alone: each interval's
+  // gain is known to ±INTERVAL_ERROR_S, and the average is their sum over
+  // the total time.
+  const totalDays = headlineSamples.reduce((a, s) => a + s.gapHours, 0) / 24;
+  const avgSpdError =
+    totalDays > 0 ? (INTERVAL_ERROR_S * Math.sqrt(headlineSamples.length)) / totalDays : null;
   const t0 = +new Date(headlineSamples[0].date);
   const pts = headlineSamples.map((s) => ({ x: (+new Date(s.date) - t0) / DAY_MS, y: s.spd }));
   const absPts = headlineSamples.map((s) => ({ x: (+new Date(s.date) - t0) / DAY_MS, y: Math.abs(s.spd) }));
@@ -569,8 +654,27 @@ export function computeStats(
       ? 1
       : deviations.filter((d) => Math.abs(d) <= effectiveSd * 2).length / deviations.length;
 
-  const se = sd / Math.sqrt(spds.length);
-  const rate = w7.length >= 2 ? mean(w7.map((s) => s.spd)) : avg;
+  // Standard error of a length-weighted mean: the scatter about it, over the
+  // effective number of intervals (long ones count for more, so there are
+  // effectively fewer of them than were taken).
+  const sumW = headlineSamples.reduce((a, s) => a + s.gapHours, 0);
+  const sumW2 = headlineSamples.reduce((a, s) => a + s.gapHours ** 2, 0);
+  const nEff = sumW2 > 0 ? sumW ** 2 / sumW2 : spds.length;
+  const n = spds.length;
+  const weightedVar =
+    n >= 2 && sumW > 0
+      ? (headlineSamples.reduce((a, s) => a + s.gapHours * (s.spd - avg) ** 2, 0) / sumW) * (n / (n - 1))
+      : 0;
+  const se = Math.sqrt(weightedVar / nEff);
+  // Student-t, not 1.96: with a handful of readings the interval is far wider.
+  // One sample has no scatter to judge by, so no interval is claimed.
+  const ciHalf = n >= 2 ? tCritical95(nEff - 1) * Math.hypot(se, avgSpdError ?? 0) : null;
+
+  // The forecast asks where the hands will be, so it uses everything the
+  // watch did recently — on the wrist and off it — not the worn-only headline.
+  const recentAll = samplesInWindow(samples, 30);
+  const forecastRate = meanRate(recentAll.length >= 2 ? recentAll : samples);
+  const absFit = fitTrend(absPts);
   const off = last!.offsetSeconds;
 
   return {
@@ -587,33 +691,31 @@ export function computeStats(
     conditions,
     weeklyVariance: w7.length >= 2 ? variance(w7.map((s) => s.spd)) : null,
     monthlyVariance: w30.length >= 2 ? variance(w30.map((s) => s.spd)) : null,
-    rolling7: w7.length ? mean(w7.map((s) => s.spd)) : null,
-    rolling30: w30.length ? mean(w30.map((s) => s.spd)) : null,
+    rolling7: w7.length ? meanRate(w7) : null,
+    rolling30: w30.length ? meanRate(w30) : null,
     driftTrend: driftFit.slope,
     driftPerMonth: driftFit.slope * 30,
     // Only believe a trend that stands clear of the scatter it was fitted
     // through — noisy readings throw up apparent trends by themselves.
     driftSignificant: Math.abs(driftFit.t) >= 2 && headlineSamples.length >= 10,
-    accuracyTrend: slope(absPts),
+    accuracyTrend: absFit.slope,
+    accuracyTrendSignificant: Math.abs(absFit.t) >= 2 && headlineSamples.length >= 10,
+    forecastRate,
     outliers,
     performanceScore: perf,
     stabilityScore: stab,
     consistencyIndex: Math.round(consistent * 100),
     // Widen the interval by the reading error as well as the spread, so it
     // reflects both how much the watch varies and how well it was measured.
-    confidence95: [
-      avg - 1.96 * Math.hypot(se, avgSpdError ?? 0),
-      avg + 1.96 * Math.hypot(se, avgSpdError ?? 0),
-    ],
+    confidence95: ciHalf != null ? [avg - ciHalf, avg + ciHalf] : null,
     avgSpdError,
     predicted: {
-      d7: off + rate * 7,
-      d14: off + rate * 14,
-      d30: off + rate * 30,
-      d90: off + rate * 90,
+      d7: off + forecastRate * 7,
+      d14: off + forecastRate * 14,
+      d30: off + forecastRate * 30,
+      d90: off + forecastRate * 90,
     },
     stabilityPct: consistent * 100,
-    wearRatio: samples.filter((s) => s.worn).length / samples.length,
     samples,
   };
 }
@@ -631,9 +733,10 @@ export function forecastOffsets(
   stats: WatchStats,
   days: number[] = [7, 14, 30, 60, 90]
 ): { date: string; predicted: number; lo: number; hi: number }[] {
-  const rate = stats.rolling7 ?? stats.avgSpd ?? 0;
-  const sd = stats.stdDev ?? 0;
-  const n = Math.max(stats.headlineSamples.length, 2);
+  // the same rate, and so the same centre line, as stats.predicted
+  const rate = stats.forecastRate ?? stats.avgSpd ?? 0;
+  const sd = stats.samples.length >= 2 ? stdDev(stats.samples.map((x) => x.spd)) : 0;
+  const n = Math.max(stats.samples.length, 2);
   const last = stats.lastMeasuredAt ? +new Date(stats.lastMeasuredAt) : Date.now();
   const off = stats.currentOffset ?? 0;
   return days.map((d) => {
@@ -691,7 +794,7 @@ export function groupByPeriod(
       return {
         key,
         label: key,
-        avgSpd: mean(spds),
+        avgSpd: meanRate(xs),
         variance: variance(spds),
         stdDev: stdDev(spds),
         min: Math.min(...spds),
@@ -741,8 +844,8 @@ export function detectAnomaly(samples: RateSample[]): {
   return {
     drifting: Math.abs(z) > 2,
     zScore: z,
-    recentAvg: mean(recent.map((s) => s.spd)),
-    baselineAvg: mean(baseline.map((s) => s.spd)),
+    recentAvg: meanRate(recent),
+    baselineAvg: meanRate(baseline),
     conditionAdjusted: adjusted,
   };
 }

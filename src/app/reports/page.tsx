@@ -6,7 +6,7 @@ import React, { useMemo, useState } from "react";
 import { Download, FileText, Printer } from "lucide-react";
 import { useStore } from "@/lib/store";
 import {
-  fmtSpd, groupByPeriod, mean, stdDev, variance,
+  fmtSpd, groupByPeriod, meanRate, stdDev, variance, wearShare,
 } from "@/lib/stats";
 import { expectedScatter, nextServiceEstimate } from "@/lib/grades";
 import { GradeBadge, HealthBadge, SectionTitle, StatCard } from "@/components/widgets";
@@ -34,7 +34,7 @@ export default function ReportsPage() {
   const report = useMemo(() => {
     if (!watch) return null;
     const ms = measurementsFor(watch.id);
-    const { stats, spec, grade, health } = analysisFor(watch.id)!;
+    const { stats, spec, grade, gradeNote, health } = analysisFor(watch.id)!;
     const services = servicesFor(watch.id);
 
     // Weekly summary (last full 7 days)
@@ -44,7 +44,7 @@ export default function ReportsPage() {
     const week = stats.headlineSamples.filter((s) => +new Date(s.date) > end - 7 * DAY_MS);
     const weekSpds = week.map((s) => s.spd);
     const weekly = week.length >= 2 ? {
-      avg: mean(weekSpds),
+      avg: meanRate(week),
       fastest: week.reduce((a, b) => (b.spd > a.spd ? b : a)),
       slowest: week.reduce((a, b) => (b.spd < a.spd ? b : a)),
       largestDev: week.reduce((a, b) => (Math.abs(b.spd) > Math.abs(a.spd) ? b : a)),
@@ -61,9 +61,10 @@ export default function ReportsPage() {
     const unstable = weeks.length ? [...weeks].sort((a, b) => b.variance - a.variance)[0] : null;
     const monthly = month.length >= 2 ? {
       count: month.length,
-      avg: mean(month.map((s) => s.spd)),
+      avg: meanRate(month),
       variance: variance(month.map((s) => s.spd)),
-      wear: month.filter((s) => s.worn).length / month.length,
+      // share of the time, over every interval — the headline set may be worn-only
+      wear: wearShare(ms, end - 30 * DAY_MS) ?? 0,
       best, worst, stable, unstable,
     } : null;
 
@@ -95,7 +96,7 @@ export default function ReportsPage() {
       suggestions.push("Running outside COSC — a service center can restore chronometer spec.");
     if (!suggestions.length) suggestions.push("Performance is healthy — keep the current routine.");
 
-    return { ms, stats, services, health, grade, spec, weekly, monthly, suggestions,
+    return { ms, stats, services, health, grade, gradeNote, spec, weekly, monthly, suggestions,
       nextService: nextServiceEstimate(watch, services, store.settings.serviceIntervalYears) };
   }, [watch, measurementsFor, servicesFor, analysisFor, store.settings.serviceIntervalYears]);
 
@@ -172,7 +173,7 @@ export default function ReportsPage() {
             </p>
           </div>
           <div className="flex items-center gap-3">
-            <GradeBadge grade={grade} movement={watch.movementType} count={stats.gradableCount} />
+            <GradeBadge grade={grade} movement={watch.movementType} count={stats.gradableCount} note={report.gradeNote} />
             <HealthBadge label={health?.label ?? null} count={stats.gradableCount} />
           </div>
         </div>
@@ -251,7 +252,7 @@ export default function ReportsPage() {
               <StatCard label="Worst week" value={monthly.worst?.label ?? "—"}
                 sub={monthly.worst ? fmtSpd(monthly.worst.avgSpd) : undefined} delay={0.2} />
               <StatCard label="Average wear" value={`${Math.round(monthly.wear * 100)}%`}
-                sub="of measured days" delay={0.25} />
+                sub="of the time" delay={0.25} />
               <StatCard label="Most stable period" value={monthly.stable?.label ?? "—"}
                 sub={monthly.stable ? `var ${monthly.stable.variance.toFixed(2)}` : undefined} delay={0.3} />
               <StatCard label="Least stable period" value={monthly.unstable?.label ?? "—"}

@@ -4,7 +4,7 @@
 
 import React, { useMemo } from "react";
 import Link from "next/link";
-import { Plus, Watch as WatchIcon } from "lucide-react";
+import { ChevronRight, Plus, Watch as WatchIcon } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { fmtSpd } from "@/lib/stats";
 import { daysSince, lastServiceDate } from "@/lib/grades";
@@ -21,13 +21,14 @@ export default function WatchesPage() {
   const rows = useMemo(
     () =>
       active.map((w) => {
-        const { stats, health, grade } = analysisFor(w.id)!;
+        const { stats, health, grade, gradeNote } = analysisFor(w.id)!;
         const services = servicesFor(w.id);
         return {
           watch: w,
           stats,
           health,
           grade,
+          gradeNote,
           sinceService: daysSince(lastServiceDate(services) ?? w.purchaseDate ?? null),
         };
       }),
@@ -46,9 +47,13 @@ export default function WatchesPage() {
     const highVar = by((r) => r.stats.variance ?? 0, -1);
     const lowVar = by((r) => r.stats.variance ?? 0);
     const longestSinceService = by((r) => r.sinceService ?? 0, -1);
-    const byTrend = [...withStats].sort(
-      (a, b) => (a.stats.accuracyTrend ?? 0) - (b.stats.accuracyTrend ?? 0)
-    );
+    // Only a trend that stands clear of the scatter is named — a slope fitted
+    // through noisy readings is not an improvement or a decline.
+    const byTrend = withStats
+      .filter((r) => r.stats.accuracyTrendSignificant)
+      .sort((a, b) => (a.stats.accuracyTrend ?? 0) - (b.stats.accuracyTrend ?? 0));
+    const best = byTrend[0];
+    const worst = byTrend[byTrend.length - 1];
     return {
       value: fmtTotal(
         active.map((w) => ({ amount: w.currentValue, currency: w.currency })),
@@ -56,8 +61,8 @@ export default function WatchesPage() {
       ),
       mostAccurate, leastAccurate, mostWorn, leastWorn, highVar, lowVar,
       longestSinceService,
-      improving: byTrend[0],
-      declining: byTrend[byTrend.length - 1],
+      improving: best && (best.stats.accuracyTrend ?? 0) < 0 ? best : undefined,
+      declining: worst && (worst.stats.accuracyTrend ?? 0) > 0 ? worst : undefined,
     };
   }, [rows, active]);
 
@@ -74,33 +79,15 @@ export default function WatchesPage() {
       </div>
 
       {agg && (
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-5 lg:gap-4">
-          <StatCard label="Collection value" value={agg.value}
-            className="[&>p:nth-child(2)]:text-xl" delay={0} />
-          <StatCard label="Most accurate" value={name(agg.mostAccurate)}
-            sub={fmtSpd(agg.mostAccurate?.stats.avgSpd)} delay={0.05} className="[&>p:nth-child(2)]:text-base" />
-          <StatCard label="Least accurate" value={name(agg.leastAccurate)}
-            sub={fmtSpd(agg.leastAccurate?.stats.avgSpd)} delay={0.1} className="[&>p:nth-child(2)]:text-base" />
-          <StatCard label="Most worn" value={name(agg.mostWorn)}
-            sub={`${Math.round((agg.mostWorn?.stats.wearRatio ?? 0) * 100)}% of days`} delay={0.15} className="[&>p:nth-child(2)]:text-base" />
-          <StatCard label="Least worn" value={name(agg.leastWorn)}
-            sub={`${Math.round((agg.leastWorn?.stats.wearRatio ?? 0) * 100)}% of days`} delay={0.2} className="[&>p:nth-child(2)]:text-base" />
-          <StatCard label="Longest since service" value={name(agg.longestSinceService)}
-            sub={`${agg.longestSinceService?.sinceService ?? "—"} days`} delay={0.25} className="[&>p:nth-child(2)]:text-base" />
-          <StatCard label="Highest variance" value={name(agg.highVar)}
-            sub={`${agg.highVar?.stats.variance?.toFixed(1)} (s/d)²`} delay={0.3} className="[&>p:nth-child(2)]:text-base" />
-          <StatCard label="Lowest variance" value={name(agg.lowVar)}
-            sub={`${agg.lowVar?.stats.variance?.toFixed(2)} (s/d)²`} delay={0.35} className="[&>p:nth-child(2)]:text-base" />
-          <StatCard label="Largest improvement" value={name(agg.improving)}
-            sub="accuracy trend ↓" delay={0.4} className="[&>p:nth-child(2)]:text-base" />
-          <StatCard label="Largest decline" value={name(agg.declining)}
-            sub="accuracy trend ↑" delay={0.45} className="[&>p:nth-child(2)]:text-base" />
-        </div>
+        <p className="-mt-3 mb-4 text-sm text-muted">
+          {active.length} watch{active.length === 1 ? "" : "es"} · collection value{" "}
+          <span className="font-semibold text-foreground">{agg.value}</span>
+        </p>
       )}
 
       <SectionTitle>Watches</SectionTitle>
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {rows.map(({ watch: w, stats, health, grade }) => (
+        {rows.map(({ watch: w, stats, health, grade, gradeNote }) => (
           <Link key={w.id} href={`/watches/${w.id}`}>
             <Card className="group h-full cursor-pointer p-5 transition-all hover:border-accent/40 hover:shadow-lg">
               <div className="flex items-start justify-between">
@@ -116,7 +103,7 @@ export default function WatchesPage() {
                     </p>
                   </div>
                 </div>
-                <GradeBadge grade={grade} movement={w.movementType} count={stats.gradableCount} explain={false} />
+                <GradeBadge grade={grade} movement={w.movementType} count={stats.gradableCount} note={gradeNote} explain={false} />
               </div>
               <div className="mt-4 grid grid-cols-3 gap-2 text-center">
                 <div className="rounded-lg bg-surface-2/60 p-2">
@@ -145,6 +132,39 @@ export default function WatchesPage() {
           </Link>
         ))}
       </div>
+
+      {agg && (
+        <details className="group mt-6">
+          <summary className="inline-flex cursor-pointer list-none items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-medium text-accent hover:bg-surface-2 [&::-webkit-details-marker]:hidden">
+            <ChevronRight className="h-3.5 w-3.5 transition-transform group-open:rotate-90" />
+            Collection highlights
+          </summary>
+          <div className="mt-3">
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-5 lg:gap-4">
+              <StatCard label="Collection value" value={agg.value}
+                className="[&>p:nth-child(2)]:text-xl" delay={0} />
+              <StatCard label="Most accurate" value={name(agg.mostAccurate)}
+                sub={fmtSpd(agg.mostAccurate?.stats.avgSpd)} delay={0.05} className="[&>p:nth-child(2)]:text-base" />
+              <StatCard label="Least accurate" value={name(agg.leastAccurate)}
+                sub={fmtSpd(agg.leastAccurate?.stats.avgSpd)} delay={0.1} className="[&>p:nth-child(2)]:text-base" />
+              <StatCard label="Most worn" value={name(agg.mostWorn)}
+                sub={`${Math.round((agg.mostWorn?.stats.wearRatio ?? 0) * 100)}% of the time`} delay={0.15} className="[&>p:nth-child(2)]:text-base" />
+              <StatCard label="Least worn" value={name(agg.leastWorn)}
+                sub={`${Math.round((agg.leastWorn?.stats.wearRatio ?? 0) * 100)}% of the time`} delay={0.2} className="[&>p:nth-child(2)]:text-base" />
+              <StatCard label="Longest since service" value={name(agg.longestSinceService)}
+                sub={`${agg.longestSinceService?.sinceService ?? "—"} days`} delay={0.25} className="[&>p:nth-child(2)]:text-base" />
+              <StatCard label="Highest variance" value={name(agg.highVar)}
+                sub={`${agg.highVar?.stats.variance?.toFixed(1)} (s/d)²`} delay={0.3} className="[&>p:nth-child(2)]:text-base" />
+              <StatCard label="Lowest variance" value={name(agg.lowVar)}
+                sub={`${agg.lowVar?.stats.variance?.toFixed(2)} (s/d)²`} delay={0.35} className="[&>p:nth-child(2)]:text-base" />
+              <StatCard label="Largest improvement" value={name(agg.improving)}
+                sub={agg.improving ? "accuracy trend ↓" : "no clear trend"} delay={0.4} className="[&>p:nth-child(2)]:text-base" />
+              <StatCard label="Largest decline" value={name(agg.declining)}
+                sub={agg.declining ? "accuracy trend ↑" : "no clear trend"} delay={0.45} className="[&>p:nth-child(2)]:text-base" />
+            </div>
+          </div>
+        </details>
+      )}
 
       {archived.length > 0 && (
         <>

@@ -146,7 +146,7 @@ export default function AnalyticsPage() {
 
         <TabsContent value="prediction">
           <ChartCard title="Prediction curve"
-            sub="measured offset + forecast with an approximate 95% range (based on 7-day rate)">
+            sub="measured offset + forecast with an approximate 95% range (rate from the last 30 days, worn and resting)">
             <PredictionChart history={data.history} forecast={data.forecast}
               color={watch.accentColor} height={380} />
           </ChartCard>
@@ -155,7 +155,7 @@ export default function AnalyticsPage() {
         <TabsContent value="patterns" className="space-y-4">
           <div className="grid gap-4 lg:grid-cols-2">
             <ChartCard title="Accuracy heatmap" sub="daily |rate| by calendar day">
-              <AccuracyHeatmap samples={data.stats.samples} weeks={22} />
+              <AccuracyHeatmap samples={data.stats.samples} weeks={22} spec={data.spec} />
             </ChartCard>
             <ChartCard title="Wear frequency" sub="days worn by weekday">
               <WearFrequencyChart data={data.wearByDay} color={watch.accentColor} height={240} />

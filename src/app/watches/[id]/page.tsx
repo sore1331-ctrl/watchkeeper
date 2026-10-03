@@ -42,7 +42,7 @@ export default function WatchDetailPage() {
     const ms = measurementsFor(watch.id);
     // one shared analysis — see lib/analysis
     const analysis = analysisFor(watch.id)!;
-    const { stats, spec, grade, health, anomaly } = analysis;
+    const { stats, spec, grade, gradeNote, health, anomaly } = analysis;
     const services = servicesFor(watch.id);
     const rolling7 = rollingAverage(stats.samples, 7);
     const rolling30 = rollingAverage(stats.samples, 30);
@@ -65,7 +65,7 @@ export default function WatchDetailPage() {
       .filter((s) => s.temperatureC != null)
       .map((s) => ({ temperatureC: s.temperatureC!, spd: +s.spd.toFixed(2) }));
     return {
-      ms, stats, services, health, spec, grade, anomaly,
+      ms, stats, services, health, spec, grade, gradeNote, anomaly,
       chartData, weekly, monthly, forecast, history, wearByDay, tempData,
       corrections: ms.filter((m) => m.timeAdjusted).map((m) => m.measuredAt),
     };
@@ -97,7 +97,7 @@ export default function WatchDetailPage() {
             <h1 className="text-2xl font-bold tracking-tight">
               {watch.brand} <span className="text-muted">{watch.model}</span>
             </h1>
-            <GradeBadge grade={grade} movement={watch.movementType} count={stats.gradableCount}
+            <GradeBadge grade={grade} movement={watch.movementType} count={stats.gradableCount} note={data.gradeNote}
               spec={spec} avgSpd={stats.avgSpd} />
             {spec ? (
               <Badge color="var(--faint)">
@@ -162,7 +162,7 @@ export default function WatchDetailPage() {
               {stats.excluded.some((e) => e.reason === "excluded-by-you") &&
                 "Some periods are left out because you marked them as not representative. "}
               {stats.excluded.some((e) => e.reason === "ran-down") &&
-                `Some intervals ran longer than the ${watch.powerReserveHours}h power reserve with the watch unworn, so the mainspring emptied partway through. A watch winding down runs slow and then stops — that is the reserve, not the movement, so those intervals are left out. `}
+                `Some intervals ran longer than the ${watch.powerReserveHours}h power reserve with the watch unworn, and ran clearly slower than usual, so the mainspring emptied partway through. A watch winding down runs slow and then stops — that is the reserve, not the movement, so those intervals are left out. `}
               {stats.excluded.some((e) => e.reason === "implausible") &&
                 `Some intervals imply an impossible rate (over ${IMPLAUSIBLE_SPD} s/d), which normally means the watch was reset or had stopped. Tick "I corrected the time" when logging those so they're recorded properly. `}
               Offsets are still plotted in full.
@@ -221,7 +221,7 @@ export default function WatchDetailPage() {
           value={stats.confidence95 ? `${stats.confidence95[0].toFixed(1)}…${stats.confidence95[1].toFixed(1)}` : "—"}
           sub="s/d around mean" delay={0.3} />
         <StatCard label="Worn" value={stats.wearRatio != null ? `${Math.round(stats.wearRatio * 100)}%` : "—"}
-          sub="of measured days" delay={0.35} />
+          sub="of the time" delay={0.35} />
       </div>
 
       {/* prediction tiles */}
@@ -327,7 +327,7 @@ export default function WatchDetailPage() {
 
           <div className="grid gap-4 lg:grid-cols-2">
             <ChartCard title="Accuracy heatmap" sub="hover a cell for the exact rate">
-              <AccuracyHeatmap samples={stats.samples} />
+              <AccuracyHeatmap samples={stats.samples} spec={spec} />
             </ChartCard>
             {data.tempData.length >= 5 && (
               <ChartCard title="Temperature sensitivity" sub="rate vs ambient temperature">

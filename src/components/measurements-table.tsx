@@ -43,7 +43,9 @@ export function csvField(v: unknown): string {
 
 export function exportMeasurementsCsv(watch: Watch, ms: Measurement[]) {
   // same exclusions as the on-screen analysis, so the file and the app agree
-  const samples = rateSamples(ms, watch.powerReserveHours);
+  const samples = rateSamples(ms, {
+    powerReserveHours: watch.powerReserveHours, movementType: watch.movementType,
+  });
   const spdByDate = new Map(samples.map((s) => [s.date, s.spd]));
   const header = "date,reference_time,watch_time,offset_s,rate_spd,temperature_c,position,power_reserve_pct,worn,time_corrected,excluded,notes";
   const rows = ms.map((m) =>
@@ -79,7 +81,10 @@ export function MeasurementsTable({
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
   const rows = useMemo<Row[]>(() => {
-    const samples = rateSamples(measurements);
+    // same exclusions as the analysis, so the rate column matches the charts
+    const samples = rateSamples(measurements, {
+      powerReserveHours: watch.powerReserveHours, movementType: watch.movementType,
+    });
     const spdByDate = new Map(samples.map((s) => [s.date, s.spd]));
     return measurements.map((m) => ({ ...m, spd: spdByDate.get(m.measuredAt) ?? null }));
   }, [measurements]);

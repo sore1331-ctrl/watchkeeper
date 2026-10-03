@@ -24,8 +24,8 @@ export default function ComparePage() {
       active
         .filter((w) => ids.includes(w.id))
         .map((w) => {
-          const { stats, health, spec, grade } = analysisFor(w.id)!;
-          return { watch: w, stats, health, spec, grade, services: servicesFor(w.id) };
+          const { stats, health, spec, grade, gradeNote } = analysisFor(w.id)!;
+          return { watch: w, stats, health, spec, grade, gradeNote, services: servicesFor(w.id) };
         }),
     [active, ids, analysisFor, servicesFor]
   );
@@ -89,7 +89,7 @@ export default function ComparePage() {
     { label: "Weekly variance", get: (r) => r.stats.weeklyVariance?.toFixed(2) ?? "—" },
     { label: "Monthly variance", get: (r) => r.stats.monthlyVariance?.toFixed(2) ?? "—" },
     { label: "Consistency", get: (r) => (r.stats.consistencyIndex != null ? `${r.stats.consistencyIndex}%` : "—") },
-    { label: "Grade", get: (r) => <GradeBadge grade={r.grade} movement={r.watch.movementType} count={r.stats.gradableCount} spec={r.spec} avgSpd={r.stats.avgSpd} /> },
+    { label: "Grade", get: (r) => <GradeBadge grade={r.grade} movement={r.watch.movementType} count={r.stats.gradableCount} note={r.gradeNote} spec={r.spec} avgSpd={r.stats.avgSpd} /> },
     { label: "Rate spec", get: (r) => (r.spec ? `${r.spec.min > 0 ? "+" : ""}${r.spec.min} / ${r.spec.max > 0 ? "+" : ""}${r.spec.max} s/d` : "—") },
     { label: "Within spec", get: (r) => (r.spec && r.stats.avgSpd != null ? (r.stats.avgSpd >= r.spec.min && r.stats.avgSpd <= r.spec.max ? "Yes" : "No") : "—") },
     { label: "Health", get: (r) => <HealthBadge label={r.health?.label ?? null} count={r.stats.gradableCount} /> },
